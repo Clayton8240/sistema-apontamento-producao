@@ -163,6 +163,19 @@ LANGUAGES = {
         'save_changes_btn': 'Salvar Alterações',
         'update_success': 'Apontamento ID {id} atualizado com sucesso!',
         'update_failed': 'Falha ao atualizar o apontamento: {error}',
+        'app_title': 'Sistema de Apontamento de Produção',
+        'main_menu_title': 'Menu Principal - Sistema de Produção',
+        'btn_production_entry': 'Apontamento de Produção',
+        'btn_pcp_management': 'Gerenciamento PCP',
+        'btn_view_entries': 'Visualizar Apontamentos',
+        'btn_manage_tables': 'Gerenciar Tabelas de Apoio',
+        'start_production_btn': 'Iniciar Produção',
+        'finish_production_btn': 'Finalizar Produção',
+        'register_entry_btn': 'Registar Apontamento Final',
+        'production_status_running': 'EM PRODUÇÃO',
+        'production_status_stopped': 'PARADO',
+        'production_status_idle': 'AGUARDANDO INÍCIO',
+        'elapsed_time_label': 'Tempo Decorrido:',
     },
 }
 
@@ -1258,7 +1271,8 @@ class PCPWindow(Toplevel):
             messagebox.showinfo("Sucesso", "Ordem de produção salva com sucesso!", parent=self)
             self.clear_fields()
             self.load_ordens()
-            if hasattr(self.master, 'open_windows') and 'production' in self.master.open_windows:
+            # Atualiza a janela de produção se ela estiver aberta
+            if 'production' in self.master.open_windows and self.master.open_windows['production'].winfo_exists():
                 self.master.open_windows['production'].load_open_wos()
         except psycopg2.IntegrityError:
             conn.rollback()
@@ -1292,6 +1306,7 @@ class PCPWindow(Toplevel):
             else:
                 widget.delete(0, END)
 
+
 class App(Toplevel):
     def __init__(self, master, db_config):
         super().__init__(master)
@@ -1300,64 +1315,203 @@ class App(Toplevel):
         self.current_language = self.db_config.get('language', 'portugues')
         
         self.grab_set()
-
         self.set_localized_title()
-        self.geometry("950x700")
+        self.geometry("950x800")
 
+        self.start_time = None
+        self.end_time = None
+        self.timer_job = None
+        self.is_running = False
+        
         self.stop_times_data = []
         self.selected_ordem_id = None
         self.open_wos_data = {}
 
-        self.form_fields_config = {
-            "Data": {"db_column": "data", "widget_type": "DateEntry", "validation_type": "date", "display_key": "col_data"},
-            "Hora Início": {"db_column": "horainicio", "widget_type": "Entry", "validation_type": "time", "display_key": "col_horainicio"},
-            "Hora Fim": {"db_column": "horafim", "widget_type": "Entry", "validation_type": "time", "display_key": "col_horafim"},
+        self.final_entry_fields_config = {
             "Tiragem em folhas": {"db_column": "tiragem_em_folhas", "widget_type": "Entry", "validation_type": "int", "display_key": "col_tiragem_em_folhas"},
             "Giros Rodados": {"db_column": "giros_rodados", "widget_type": "Entry", "validation_type": "int", "display_key": "col_giros_rodados"},
             "Perdas/ Malas": {"db_column": "perdas_malas", "widget_type": "Entry", "validation_type": "int", "display_key": "col_perdas_malas"},
             "Total Lavagens": {"db_column": "total_lavagens", "widget_type": "Entry", "validation_type": "int", "display_key": "col_total_lavagens"},
             "Total Acertos": {"db_column": "total_acertos", "widget_type": "Entry", "validation_type": "int", "display_key": "col_total_acertos"},
-            "Impressor": {"db_column": "impressor", "widget_type": "Combobox", "values": [], "display_key": "printer_label", "lookup_table_ref": "impressores"},
+            "Quantidade Produzida": {"db_column": "quantidadeproduzida", "widget_type": "Entry", "validation_type": "int", "display_key": "col_quantidadeproduzida"},
             "Ocorrências": {"db_column": "ocorrencias", "widget_type": "Text", "height": 4, "width": 50, "display_key": "col_ocorrencias"},
-            "Turno": {"db_column": "turno", "widget_type": "Combobox", "values": [], "display_key": "shift_label", "lookup_table_ref": "turnos_tipos"},
-            "Quantidade Produzida": {"db_column": "quantidadeproduzida", "widget_type": "Entry", "validation_type": "int", "display_key": "col_quantidadeproduzida"}
         }
-        self.full_form_config_for_edit = {
-            "WO": {"db_column": "wo", "display_key": "col_wo", "widget_type": "Entry"},
-            "Cliente": {"db_column": "cliente", "display_key": "col_cliente", "widget_type": "Entry"},
-            "Equipamento": {"db_column": "equipamento", "display_key": "equipment_label", "widget_type": "Combobox", "lookup_table_ref": "equipamentos_tipos"},
-            "QTDE CORES": {"db_column": "qtde_cores", "display_key": "col_qtde_cores", "widget_type": "Combobox", "lookup_table_ref": "qtde_cores_tipos"},
-            "TIPO PAPEL": {"db_column": "tipo_papel", "display_key": "col_tipo_papel", "widget_type": "Combobox", "lookup_table_ref": "tipos_papel"},
-            "Gramatura": {"db_column": "gramatura", "display_key": "col_gramatura", "widget_type": "Combobox", "lookup_table_ref": "gramaturas_tipos"},
-            "Formato": {"db_column": "formato", "display_key": "col_formato", "widget_type": "Combobox", "lookup_table_ref": "formatos_tipos"},
-            "FSC": {"db_column": "fsc", "display_key": "col_fsc", "widget_type": "Combobox", "lookup_table_ref": "fsc_tipos"},
-            "Numero Inspeção": {"db_column": "numeroinspecao", "display_key": "col_numeroinspecao", "widget_type": "Entry"},
-            **self.form_fields_config
+        
+        self.initial_selection_fields_config = {
+             "Impressor": {"db_column": "impressor", "widget_type": "Combobox", "values": [], "display_key": "printer_label", "lookup_table_ref": "impressores"},
+             "Turno": {"db_column": "turno", "widget_type": "Combobox", "values": [], "display_key": "shift_label", "lookup_table_ref": "turnos_tipos"},
         }
 
-        self.fields, self.validation_labels, self.combobox_data = {}, {}, {}
+        self.fields = {}
+        self.validation_labels = {}
         
         self.create_menu()
         self.create_form()
-        self.load_combobox_data()
-        self.load_open_wos()
-    
+        self.load_initial_data()
+        self.update_ui_state()
+
     def get_string(self, key, **kwargs):
-        return self.master.get_string(key, **kwargs)
+        base_lang = LANGUAGES.get('portugues', {})
+        return base_lang.get(key, key).format(**kwargs)
 
     def set_localized_title(self):
-        self.title(self.get_string('app_title'))
+        self.title(self.get_string('btn_production_entry'))
     
     def create_menu(self):
         self.menubar = tb.Menu(self)
         manage_menu = tb.Menu(self.menubar, tearoff=0)
         manage_menu.add_command(label=self.get_string('menu_manage_pcp'), command=lambda: self.master.open_pcp_window())
         manage_menu.add_separator()
-        manage_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self.master, self.db_config, self.load_combobox_data))
+        manage_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self.master, self.db_config, self.load_initial_data))
         manage_menu.add_command(label=self.get_string('menu_view_appointments'), command=lambda: self.master.open_view_window())
         self.menubar.add_cascade(label=self.get_string('menu_manage'), menu=manage_menu)
         self.config(menu=self.menubar)
-    
+
+    def create_form(self):
+        main_frame = tb.Frame(self, padding=20)
+        main_frame.pack(fill=BOTH, expand=YES)
+        
+        # 1. Frame de Seleção Inicial
+        selection_frame = tb.LabelFrame(main_frame, text="1. Seleção Inicial", bootstyle=PRIMARY, padding=15)
+        selection_frame.pack(fill=X, pady=(0, 10))
+        
+        tb.Label(selection_frame, text="Selecionar WO:").grid(row=0, column=0, sticky=W, padx=5, pady=5)
+        self.wo_combobox = tb.Combobox(selection_frame, state="readonly")
+        self.wo_combobox.grid(row=0, column=1, sticky=EW, padx=5, pady=5)
+        
+        row = 1
+        for key, cfg in self.initial_selection_fields_config.items():
+            tb.Label(selection_frame, text=self.get_string(cfg["display_key"]) + ":").grid(row=row, column=0, sticky=W, padx=5, pady=5)
+            widget = tb.Combobox(selection_frame, state="readonly")
+            widget.grid(row=row, column=1, sticky=EW, padx=5, pady=5)
+            self.fields[cfg["db_column"]] = widget
+            row += 1
+        selection_frame.grid_columnconfigure(1, weight=1)
+
+        # 2. Frame de Controle e Cronômetro
+        control_frame = tb.LabelFrame(main_frame, text="2. Controle da Produção", bootstyle=PRIMARY, padding=15)
+        control_frame.pack(fill=X, pady=10)
+        control_frame.grid_columnconfigure(1, weight=1)
+
+        self.start_finish_button = tb.Button(control_frame, text=self.get_string('start_production_btn'), bootstyle="success", command=self.toggle_production)
+        self.start_finish_button.grid(row=0, column=0, padx=10, pady=10)
+        
+        self.status_label = tb.Label(control_frame, text=self.get_string('production_status_idle'), font=("Helvetica", 14, "bold"), bootstyle="secondary")
+        self.status_label.grid(row=0, column=1, padx=20)
+
+        self.timer_label = tb.Label(control_frame, text="00:00:00", font=("Helvetica", 20, "bold"), bootstyle=INFO)
+        self.timer_label.grid(row=0, column=2, sticky=E, padx=10)
+
+        # 3. Frame de Apontamentos Durante a Produção
+        live_entry_frame = tb.LabelFrame(main_frame, text="3. Apontamentos em Processo", bootstyle=PRIMARY, padding=15)
+        live_entry_frame.pack(fill=X, pady=10)
+        
+        self.stops_button = tb.Button(live_entry_frame, text="Apontar Paradas", command=self.open_stop_times_window, state=DISABLED)
+        self.stops_button.pack()
+
+        # 4. Frame de Dados Finais
+        self.final_data_frame = tb.LabelFrame(main_frame, text="4. Dados Finais (Preencher ao Finalizar)", bootstyle=PRIMARY, padding=15)
+        self.final_data_frame.pack(fill=X, pady=10)
+        
+        per_col = (len(self.final_entry_fields_config) + 1) // 2
+        i = 0
+        for key, cfg in self.final_entry_fields_config.items():
+            row, col_offset = (i % per_col, 0) if i < per_col else (i % per_col, 3)
+            tb.Label(self.final_data_frame, text=self.get_string(cfg["display_key"]) + ":").grid(row=row, column=col_offset, sticky=W, padx=10, pady=5)
+            if cfg["widget_type"] == "Text":
+                widget = tb.Text(self.final_data_frame, height=cfg.get("height", 4), width=cfg.get("width", 50))
+            else:
+                widget = tb.Entry(self.final_data_frame)
+            
+            widget.grid(row=row, column=col_offset + 1, padx=10, pady=5, sticky=EW)
+            self.fields[cfg["db_column"]] = widget
+            
+            v_label = tb.Label(self.final_data_frame, text="", bootstyle="danger", font="Helvetica 9 italic")
+            v_label.grid(row=row, column=col_offset + 2, sticky=W, padx=5)
+            self.validation_labels[cfg["db_column"]] = v_label
+            i += 1
+        
+        self.final_data_frame.grid_columnconfigure(1, weight=1)
+        self.final_data_frame.grid_columnconfigure(4, weight=1)
+        
+        # 5. Botão de Registro Final
+        self.register_button = tb.Button(main_frame, text=self.get_string('register_entry_btn'), bootstyle="primary-outline", command=self.submit)
+        self.register_button.pack(pady=20, ipadx=20, ipady=10)
+
+    def toggle_production(self):
+        if not self.is_running:
+            # Iniciar a produção
+            wo_val = self.wo_combobox.get()
+            impressor_val = self.fields['impressor'].get()
+            if not wo_val or not impressor_val:
+                messagebox.showwarning("Campos Obrigatórios", "Por favor, selecione a WO e o Impressor antes de iniciar.", parent=self)
+                return
+            
+            self.is_running = True
+            self.start_time = datetime.now()
+            self.end_time = None
+            self.update_timer()
+            self.update_ui_state()
+            self.update_wo_status('Em Producao')
+
+        else:
+            # Finalizar a produção
+            self.is_running = False
+            if self.timer_job:
+                self.after_cancel(self.timer_job)
+                self.timer_job = None
+            self.end_time = datetime.now()
+            self.update_ui_state()
+            
+    def update_timer(self):
+        if self.is_running:
+            elapsed = datetime.now() - self.start_time
+            # Formata o tempo para HH:MM:SS
+            total_seconds = int(elapsed.total_seconds())
+            hours, remainder = divmod(total_seconds, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            self.timer_label.config(text=f"{hours:02}:{minutes:02}:{seconds:02}")
+            
+            self.timer_job = self.after(1000, self.update_timer)
+
+    def update_ui_state(self):
+        if self.is_running:
+            # Estado: Produção em andamento
+            self.start_finish_button.config(text=self.get_string('finish_production_btn'), bootstyle="danger")
+            self.status_label.config(text=self.get_string('production_status_running'), bootstyle="success")
+            self.stops_button.config(state=NORMAL)
+            self.wo_combobox.config(state=DISABLED)
+            for key, cfg in self.initial_selection_fields_config.items():
+                self.fields[cfg['db_column']].config(state=DISABLED)
+            for key, cfg in self.final_entry_fields_config.items():
+                self.fields[cfg['db_column']].config(state=DISABLED)
+            self.register_button.config(state=DISABLED)
+
+        elif self.start_time and not self.is_running:
+            # Estado: Produção finalizada, aguardando preenchimento dos dados
+            self.start_finish_button.config(state=DISABLED)
+            self.status_label.config(text=self.get_string('production_status_stopped'), bootstyle="warning")
+            self.stops_button.config(state=DISABLED)
+            for key, cfg in self.final_entry_fields_config.items():
+                self.fields[cfg['db_column']].config(state=NORMAL)
+            self.register_button.config(state=NORMAL)
+
+        else:
+            # Estado: Inicial, aguardando início
+            self.start_finish_button.config(text=self.get_string('start_production_btn'), bootstyle="success")
+            self.status_label.config(text=self.get_string('production_status_idle'), bootstyle="secondary")
+            self.stops_button.config(state=DISABLED)
+            self.wo_combobox.config(state="readonly")
+            for key, cfg in self.initial_selection_fields_config.items():
+                self.fields[cfg['db_column']].config(state="readonly")
+            for key, cfg in self.final_entry_fields_config.items():
+                self.fields[cfg['db_column']].config(state=DISABLED)
+            self.register_button.config(state=DISABLED)
+
+    def load_initial_data(self):
+        self.load_open_wos()
+        self.load_combobox_data()
+        
     def get_db_connection(self):
         if not all(self.db_config.get(k) for k in ['host', 'porta', 'banco', 'usuário', 'senha']):
             return None
@@ -1366,124 +1520,6 @@ class App(Toplevel):
             return psycopg2.connect(**conn_params)
         except Exception:
             return None
-
-    def load_combobox_data(self):
-        defaults = {cfg['db_column']: [] for cfg in self.form_fields_config.values() if cfg['widget_type'] == 'Combobox'}
-        self.update_comboboxes(defaults)
-        
-        conn = self.get_db_connection()
-        if not conn: return
-        
-        try:
-            with conn.cursor() as cur:
-                for cfg in self.form_fields_config.values():
-                    if cfg.get("widget_type") == "Combobox" and "lookup_table_ref" in cfg:
-                        schema = LookupTableManagerWindow.lookup_table_schemas.get(cfg["lookup_table_ref"])
-                        if schema:
-                            col = next((c['db_column'] for c in schema['columns'].values() if c['editable']), None)
-                            if col:
-                                cur.execute(f'SELECT DISTINCT "{col}" FROM {schema["table"]} ORDER BY "{col}"')
-                                self.combobox_data[cfg['db_column']] = [row[0] for row in cur.fetchall()]
-
-            self.update_comboboxes(self.combobox_data)
-        except Exception as e:
-            messagebox.showwarning("Erro", f"Falha ao carregar dados de lookup: {e}", parent=self)
-        finally:
-            if conn: conn.close()
-
-    def update_comboboxes(self, data):
-        for cfg in self.form_fields_config.values():
-            if cfg.get("widget_type") == "Combobox":
-                db_col = cfg["db_column"]
-                new_vals = data.get(db_col, [])
-                cfg["values"] = new_vals
-                if db_col in self.fields:
-                    widget = self.fields[db_col]
-                    current = widget.get()
-                    widget['values'] = new_vals
-                    widget.set(current if current in new_vals else "")
-                    
-    def create_form(self):
-        main_frame = tb.Frame(self, padding=20)
-        main_frame.pack(fill="both", expand=True)
-        
-        canvas = tb.Canvas(main_frame)
-        scrollbar = tb.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        scroll_frame = tb.Frame(canvas, padding=10)
-        scroll_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        canvas.bind_all("<MouseWheel>", lambda event: canvas.yview_scroll(int(-1*(event.delta/120)), "units"))
-        
-        wo_frame = tb.LabelFrame(scroll_frame, text="Ordem de Produção", bootstyle=PRIMARY, padding=15)
-        wo_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        wo_frame.grid_columnconfigure(1, weight=1)
-
-        tb.Label(wo_frame, text="Selecionar WO:").grid(row=0, column=0, sticky="w", padx=10, pady=5)
-        self.wo_combobox = tb.Combobox(wo_frame, state="readonly")
-        self.wo_combobox.grid(row=0, column=1, padx=10, pady=5, sticky="ew")
-        self.wo_combobox.bind("<<ComboboxSelected>>", self.on_wo_selected)
-
-        self.wo_details_labels = {}
-        details_to_show = {
-            "cliente": "Cliente", "equipamento": "Equipamento", "qtde_cores": "Qtde Cores",
-            "tipo_papel": "Tipo Papel", "formato": "Formato", "gramatura": "Gramatura", "fsc": "FSC"
-        }
-        detail_row = 1
-        for key, text in details_to_show.items():
-            tb.Label(wo_frame, text=f"{text}:").grid(row=detail_row, column=0, sticky="w", padx=10, pady=5)
-            self.wo_details_labels[key] = tb.Label(wo_frame, text="-", bootstyle=INFO, anchor=W)
-            self.wo_details_labels[key].grid(row=detail_row, column=1, sticky="ew", padx=10, pady=5)
-            detail_row += 1
-
-        input_frame = tb.LabelFrame(scroll_frame, text=self.get_string('form_data_section'), bootstyle="primary", padding=15)
-        input_frame.grid(row=1, column=0, sticky="ew")
-
-        fields = list(self.form_fields_config.items())
-        per_col = (len(fields) + 1) // 2
-        
-        for i, (label_key, cfg) in enumerate(fields):
-            row, col_offset = (i, 0) if i < per_col else (i - per_col, 3)
-            db_col = cfg["db_column"]
-            
-            tb.Label(input_frame, text=self.get_string(cfg["display_key"]) + ":").grid(row=row, column=col_offset, sticky="w", padx=10, pady=5)
-            
-            if cfg["widget_type"] == "DateEntry":
-                widget = DateEntry(input_frame, bootstyle="info", dateformat="%d/%m/%Y")
-                widget.entry.insert(0, datetime.now().strftime("%d/%m/%Y"))
-            elif cfg["widget_type"] == "Combobox":
-                widget = tb.Combobox(input_frame, values=cfg.get("values", []), state="readonly")
-            elif cfg["widget_type"] == "Text":
-                widget = tb.Text(input_frame, height=cfg.get("height", 4), width=cfg.get("width", 50))
-            else:
-                widget = tb.Entry(input_frame)
-                if cfg["validation_type"] == "time":
-                    widget.insert(0, "HH:MM")
-                    widget.bind("<FocusIn>", lambda e, w=widget: self.clear_placeholder(w, "HH:MM"))
-                    widget.bind("<FocusOut>", lambda e, w=widget: self.restore_placeholder(w, "HH:MM"))
-            
-            widget.grid(row=row, column=col_offset + 1, padx=10, pady=5, sticky="ew")
-            self.fields[db_col] = widget
-            
-            v_label = tb.Label(input_frame, text="", bootstyle="danger", font="Helvetica 9 italic")
-            v_label.grid(row=row, column=col_offset + 2, sticky="w", padx=5)
-            self.validation_labels[db_col] = v_label
-            
-        row = per_col
-        self.has_stops_var = tb.BooleanVar(value=False)
-        tb.Checkbutton(input_frame, text=self.get_string('has_stops_question'), variable=self.has_stops_var, bootstyle="round-toggle", command=self.toggle_stop_times_button).grid(row=row, column=0, sticky="w", padx=10, pady=10)
-        self.open_stop_times_btn = tb.Button(input_frame, text=self.get_string('open_stop_times_btn'), bootstyle="info-outline", command=self.open_stop_times_window, state="disabled")
-        self.open_stop_times_btn.grid(row=row, column=1, padx=10, pady=10, sticky="ew")
-        
-        input_frame.grid_columnconfigure(1, weight=1)
-        input_frame.grid_columnconfigure(4, weight=1)
-        
-        btn_frame = tb.Frame(scroll_frame)
-        btn_frame.grid(row=2, column=0, pady=20, sticky="ew")
-        tb.Button(btn_frame, text=self.get_string('submit_btn'), bootstyle="success-outline", command=self.submit).pack(side="left", padx=10, expand=True, fill="x")
-        tb.Button(btn_frame, text=self.get_string('clear_form_btn'), bootstyle="warning-outline", command=self.clear_form).pack(side="left", padx=10, expand=True, fill="x")
 
     def load_open_wos(self):
         self.open_wos_data = {}
@@ -1515,110 +1551,86 @@ class App(Toplevel):
         finally:
             if conn: conn.close()
 
-    def on_wo_selected(self, event=None):
+    def load_combobox_data(self):
+        # Carrega dados para os comboboxes de seleção inicial
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                for cfg in self.initial_selection_fields_config.values():
+                    lookup_ref = cfg.get("lookup_table_ref")
+                    if lookup_ref:
+                        schema = LookupTableManagerWindow.lookup_table_schemas.get(lookup_ref)
+                        if schema:
+                            col = next((c['db_column'] for c in schema['columns'].values() if c['editable']), None)
+                            if col:
+                                cur.execute(f'SELECT DISTINCT "{col}" FROM {schema["table"]} ORDER BY "{col}"')
+                                values = [row[0] for row in cur.fetchall()]
+                                self.fields[cfg['db_column']]['values'] = values
+        except Exception as e:
+            messagebox.showwarning("Erro", f"Falha ao carregar dados de lookup: {e}", parent=self)
+        finally:
+            if conn: conn.close()
+    
+    def open_stop_times_window(self):
+        # Abre a janela de paradas e passa a si mesma como master
+        StopTimesWindow(self, self.db_config, self.stop_times_data)
+
+    def update_wo_status(self, status):
         selected_wo_display = self.wo_combobox.get()
         wo_data = self.open_wos_data.get(selected_wo_display)
-        if wo_data:
-            self.selected_ordem_id = wo_data.get("id")
-            for key, label in self.wo_details_labels.items():
-                value = wo_data.get(key)
-                label.config(text=str(value) if value is not None else "-")
-        else:
-            self.selected_ordem_id = None
-            for label in self.wo_details_labels.values():
-                label.config(text="-")
+        if not wo_data: return
 
-    def toggle_stop_times_button(self):
-        self.open_stop_times_btn.config(state="normal" if self.has_stops_var.get() else "disabled")
-        if not self.has_stops_var.get(): self.stop_times_data = []
-
-    def open_stop_times_window(self):
-        StopTimesWindow(self, self.db_config, initial_stop_data=self.stop_times_data)
-
-    def clear_placeholder(self, widget, placeholder):
-        if widget.get() == placeholder:
-            widget.delete(0, END)
-
-    def restore_placeholder(self, widget, placeholder):
-        if not widget.get():
-            widget.insert(0, placeholder)
-
-    def clear_form(self):
-        for db_col, widget in self.fields.items():
-            cfg = next((c for c in self.form_fields_config.values() if c["db_column"] == db_col), {})
-            if isinstance(widget, (tb.Entry, DateEntry)):
-                w = widget.entry if isinstance(widget, DateEntry) else widget
-                w.delete(0, END)
-                if cfg.get("validation_type") == "time": w.insert(0, "HH:MM")
-                elif cfg.get("widget_type") == "DateEntry": w.insert(0, datetime.now().strftime("%d/%m/%Y"))
-            elif isinstance(widget, tb.Text): widget.delete("1.0", END)
-            elif isinstance(widget, tb.Combobox): widget.set("")
-            if db_col in self.validation_labels:
-                self.validation_labels[db_col].config(text="")
+        self.selected_ordem_id = wo_data.get("id")
         
-        self.wo_combobox.set("")
-        self.on_wo_selected()
-        
-        self.has_stops_var.set(False)
-        self.toggle_stop_times_button()
-
-    def validate_input(self, data):
-        is_valid = True
-        for db_col, val in data.items():
-            if db_col not in self.fields: continue
-                
-            cfg = next((c for c in self.form_fields_config.values() if c["db_column"] == db_col), None)
-            if not cfg: continue
-
-            self.validation_labels[db_col].config(text="")
-            if cfg['db_column'] not in ['ocorrencias'] and not val:
-                self.validation_labels[db_col].config(text=self.get_string('validation_error_required'))
-                is_valid = False
-            
-            if val:
-                v_type = cfg.get("validation_type")
-                try:
-                    if v_type == "date": datetime.strptime(val, "%d/%m/%Y")
-                    elif v_type == "time" and val != "HH:MM": datetime.strptime(val, "%H:%M")
-                    elif v_type == "int": int(val)
-                except (ValueError, TypeError):
-                    self.validation_labels[db_col].config(text=self.get_string(f'validation_error_{v_type}_format'))
-                    is_valid = False
-        return is_valid
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE ordem_producao SET status = %s WHERE id = %s", (status, self.selected_ordem_id))
+            conn.commit()
+        except psycopg2.Error as e:
+            conn.rollback()
+            messagebox.showerror("Erro de BD", f"Falha ao atualizar o status da WO: {e}", parent=self)
+        finally:
+            if conn: conn.close()
 
     def submit(self):
-        if not self.db_config.get('tabela'):
-            messagebox.showerror(self.get_string('submit_btn'), self.get_string('db_config_missing'), parent=self)
-            return
-            
-        if not self.selected_ordem_id:
-            messagebox.showerror("Seleção Obrigatória", "Por favor, selecione uma Ordem de Serviço (WO) antes de registrar.", parent=self)
+        if not self.selected_ordem_id or not self.end_time:
+            messagebox.showerror("Erro", "A produção não foi iniciada ou finalizada corretamente.", parent=self)
             return
 
-        data = {db_col: w.get("1.0", "end-1c") if isinstance(w, tb.Text) else (w.entry.get() if isinstance(w, DateEntry) else w.get()) for db_col, w in self.fields.items()}
-        for k, v in data.items():
-            if isinstance(v, str): data[k] = v.strip()
-
-        if not self.validate_input(data):
-            messagebox.showerror(self.get_string('validation_error_fix_fields'), self.get_string('validation_error_fix_fields'), parent=self)
-            return
-
-        p_data = {}
-        for db_col, val in data.items():
-            cfg = next((c for c in self.form_fields_config.values() if c["db_column"] == db_col), {})
-            v_type = cfg.get("validation_type")
-            if not val or (v_type == "time" and val == "HH:MM"):
-                p_data[db_col] = None
-            elif v_type == "int": p_data[db_col] = int(val)
-            elif v_type == "date": p_data[db_col] = datetime.strptime(val, "%d/%m/%Y").date()
-            elif v_type == "time": p_data[db_col] = datetime.strptime(val, "%H:%M").time()
-            else: p_data[db_col] = val
-            
-        p_data['ordem_id'] = self.selected_ordem_id
-        selected_wo_display = self.wo_combobox.get()
-        wo_data = self.open_wos_data.get(selected_wo_display, {})
+        # Coleta os dados dos campos finais
+        data = {db_col: w.get("1.0", "end-1c").strip() if isinstance(w, tb.Text) else w.get().strip()
+                for db_col, w in self.fields.items() if db_col in self.final_entry_fields_config}
         
-        p_data['wo'] = selected_wo_display.split(' - ')[0]
+        # Validação simples
+        is_valid = True
+        for db_col, val in data.items():
+            cfg = self.final_entry_fields_config.get(next(k for k,v in self.final_entry_fields_config.items() if v['db_column']==db_col))
+            v_type = cfg.get("validation_type")
+            if v_type == 'int' and val and not val.isdigit():
+                self.validation_labels[db_col].config(text="Deve ser um número")
+                is_valid = False
+            else:
+                 self.validation_labels[db_col].config(text="")
+        
+        if not is_valid:
+            messagebox.showerror("Dados Inválidos", "Corrija os campos marcados.", parent=self)
+            return
+            
+        # Adiciona os dados coletados automaticamente e da seleção inicial
+        p_data = {cfg['db_column']: self.fields[cfg['db_column']].get() for cfg in self.initial_selection_fields_config.values()}
+        p_data.update({db_col: int(val) if cfg.get("validation_type") == 'int' and val else val for db_col, val in data.items()})
+
+        p_data['data'] = self.start_time.date()
+        p_data['horainicio'] = self.start_time.time()
+        p_data['horafim'] = self.end_time.time()
+        p_data['ordem_id'] = self.selected_ordem_id
+        
+        # Adiciona dados da WO para consistência
+        wo_data = self.open_wos_data.get(self.wo_combobox.get(), {})
+        p_data['wo'] = self.wo_combobox.get().split(' - ')[0]
         p_data['cliente'] = wo_data.get('cliente')
         p_data['equipamento'] = wo_data.get('equipamento')
         p_data['qtde_cores'] = wo_data.get('qtde_cores')
@@ -1627,42 +1639,51 @@ class App(Toplevel):
         p_data['gramatura'] = wo_data.get('gramatura')
         p_data['fsc'] = wo_data.get('fsc')
 
-        conn = None
+        # Salva no banco de dados
+        conn = self.get_db_connection()
+        if not conn: return
         try:
-            conn = self.get_db_connection()
-            if not conn:
-                messagebox.showerror(self.get_string('submit_btn'), self.get_string('db_conn_incomplete'), parent=self)
-                return
-                
             with conn.cursor() as cur:
-                all_db_cols = [v['db_column'] for v in self.full_form_config_for_edit.values()] + ['ordem_id']
-                cols_to_insert = [c for c in all_db_cols if c in p_data]
+                # Lógica de inserção no banco
+                # ...
+                # (A lógica de inserção do submit anterior pode ser adaptada aqui)
+                 all_db_cols = list(p_data.keys())
+                 q_cols = ', '.join([f'"{c}"' for c in all_db_cols])
+                 placeholders = ', '.join(['%s'] * len(all_db_cols))
+                 values = [p_data.get(c) for c in all_db_cols]
                 
-                q_cols = ', '.join([f'"{c}"' for c in cols_to_insert])
-                placeholders = ', '.join(['%s'] * len(cols_to_insert))
-                values = [p_data.get(c) for c in cols_to_insert]
-                
-                query = f"INSERT INTO {self.db_config['tabela']} ({q_cols}) VALUES ({placeholders}) RETURNING id;"
-                cur.execute(query, values)
-                app_id = cur.fetchone()[0]
+                 query = f"INSERT INTO {self.db_config['tabela']} ({q_cols}) VALUES ({placeholders}) RETURNING id;"
+                 cur.execute(query, values)
+                 app_id = cur.fetchone()[0]
 
-                if self.has_stops_var.get() and self.stop_times_data:
+                 # Insere as paradas
+                 if self.stop_times_data:
                     for stop in self.stop_times_data:
                         stop_q = "INSERT INTO paradas (apontamento_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s);"
                         cur.execute(stop_q, (app_id, stop['motivo_id'], stop['hora_inicio_parada'], stop['hora_fim_parada'], stop['motivo_extra_detail']))
-                
-                cur.execute("UPDATE ordem_producao SET status = 'Em Producao' WHERE id = %s", (self.selected_ordem_id,))
-
+            
             conn.commit()
-            messagebox.showinfo(self.get_string('submit_btn'), self.get_string('db_send_success'), parent=self)
-            self.clear_form()
-            self.load_open_wos()
+            messagebox.showinfo("Sucesso", "Apontamento registrado com sucesso!", parent=self)
+            self.update_wo_status("Concluido")
+            self.destroy() # Fecha a janela de apontamento após o sucesso
+
         except Exception as e:
             if conn: conn.rollback()
-            messagebox.showerror(self.get_string('submit_btn'), self.get_string('db_send_failed', error=e), parent=self)
+            messagebox.showerror("Erro ao Salvar", f"Não foi possível salvar o apontamento: {e}", parent=self)
         finally:
             if conn: conn.close()
+            
+    def clear_placeholder(self, widget, placeholder):
+        if widget.get() == placeholder:
+            widget.delete(0, END)
 
+    def restore_placeholder(self, widget, placeholder):
+        if not widget.get():
+            widget.insert(0, placeholder)
+            
+# ==============================================================================
+# 5. CLASSE DE MENU PRINCIPAL
+# ==============================================================================
 class MainMenu(tb.Window):
     def __init__(self):
         super().__init__(themename="flatly")
@@ -1678,6 +1699,7 @@ class MainMenu(tb.Window):
         x, y = (sw // 2) - (w // 2), (sh // 2) - (h // 2)
         self.geometry(f"{w}x{h}+{x}+{y}")
         
+        # Dicionário para rastrear janelas abertas
         self.open_windows = {}
 
         self.create_menu()
@@ -1716,6 +1738,7 @@ class MainMenu(tb.Window):
         self.menubar.add_cascade(label=self.get_string('menu_settings'), menu=config_menu)
         self.config(menu=self.menubar)
     
+    # Gerenciamento de janelas para evitar múltiplas instâncias
     def open_production_window(self):
         if 'production' not in self.open_windows or not self.open_windows['production'].winfo_exists():
             self.open_windows['production'] = App(master=self, db_config=self.db_config)
@@ -1800,7 +1823,7 @@ class MainMenu(tb.Window):
             messagebox.showerror(self.get_string('test_connection_btn'), self.get_string('test_connection_failed_db', error=e), parent=parent_win)
 
 # ==============================================================================
-# 5. PONTO DE ENTRADA DA APLICAÇÃO
+# 6. PONTO DE ENTRADA DA APLICAÇÃO
 # ==============================================================================
 if __name__ == "__main__":
     main_app = MainMenu()
