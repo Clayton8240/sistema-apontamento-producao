@@ -1,0 +1,9 @@
+{
+    "host": "192.168.38.122",
+    "porta": "5432",
+    "usu\u00e1rio": "apontador_offset",
+    "senha": "apontamento",
+    "banco": "apontamentooffset",
+    "tabela": "apontamento",
+    "language": "portugues"
+}
