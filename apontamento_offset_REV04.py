@@ -11,11 +11,12 @@ import os
 import csv
 
 # ==============================================================================
-# 1. I18N STRINGS (Traduções)
+# STRINGS (Traduções)
 # ==============================================================================
 LANGUAGES = {
     'portugues': {
         'app_title': 'Sistema de Apontamento de Produção',
+
         'main_menu_title': 'Menu Principal - Sistema de Produção',
         'btn_production_entry': 'Apontamento de Produção',
         'btn_pcp_management': 'Gerenciamento PCP',
@@ -95,11 +96,14 @@ LANGUAGES = {
         'select_appointment_to_edit': 'Selecione um apontamento para editar.', 'select_appointment_to_delete': 'Selecione um apontamento para excluir.',
         'edit_appointment_title': 'Editar Apontamento - ID: {id}', 'update_success': 'Apontamento ID {id} atualizado com sucesso!',
         'update_failed': 'Falha ao atualizar o apontamento: {error}',
+        'add_new_btn': 'Adicionar Novo',
+        'edit_selected_btn': 'Editar Selecionado',
+        'delete_selected_btn': 'Excluir Selecionado',
     },
 }
 
 # ==============================================================================
-# 2. FUNÇÕES E CLASSES DE DEPENDÊNCIA (DEFINIDAS PRIMEIRO)
+#   FUNÇÕES E CLASSES DE DEPENDÊNCIA (DEFINIDAS PRIMEIRO)
 # ==============================================================================
 
 def get_connection_params(config_dict):
@@ -305,7 +309,7 @@ class LookupTableManagerWindow(Toplevel):
 
     
 # ==============================================================================
-# 3. CLASSES DE GERENCIAMENTO PCP (EDITAR E PRINCIPAL)
+# CLASSES DE GERENCIAMENTO PCP (EDITAR E PRINCIPAL)
 # ==============================================================================
 
 class EditOrdemWindow(Toplevel):
@@ -653,7 +657,7 @@ class PCPWindow(Toplevel):
                 widget.delete(0, END)
 
 # ==============================================================================
-# 5. CLASSE PRINCIPAL DE APONTAMENTO (App)
+#   CLASSE PRINCIPAL DE APONTAMENTO (App)
 # ==============================================================================
 class App(Toplevel):
     def __init__(self, master, db_config):
@@ -1333,7 +1337,7 @@ class App(Toplevel):
             
 
 # ==============================================================================
-# 6. CLASSE DE MENU PRINCIPAL
+#   CLASSE DE MENU PRINCIPAL
 # ==============================================================================
 class MainMenu(tb.Window):
     def __init__(self):
@@ -1476,7 +1480,7 @@ class MainMenu(tb.Window):
             messagebox.showerror(self.get_string('test_connection_btn'), self.get_string('test_connection_failed_db', error=e), parent=parent_win)
 
 # ==============================================================================
-# 7. PONTO DE ENTRADA DA APLICAÇÃO
+#  PONTO DE ENTRADA DA APLICAÇÃO
 # ==============================================================================
 if __name__ == "__main__":
     main_app = MainMenu()
