@@ -11,12 +11,11 @@ import os
 import csv
 
 # ==============================================================================
-# STRINGS (Traduções)
+# 1. I18N STRINGS (Traduções)
 # ==============================================================================
 LANGUAGES = {
     'portugues': {
         'app_title': 'Sistema de Apontamento de Produção',
-
         'main_menu_title': 'Menu Principal - Sistema de Produção',
         'btn_production_entry': 'Apontamento de Produção',
         'btn_pcp_management': 'Gerenciamento PCP',
@@ -96,14 +95,11 @@ LANGUAGES = {
         'select_appointment_to_edit': 'Selecione um apontamento para editar.', 'select_appointment_to_delete': 'Selecione um apontamento para excluir.',
         'edit_appointment_title': 'Editar Apontamento - ID: {id}', 'update_success': 'Apontamento ID {id} atualizado com sucesso!',
         'update_failed': 'Falha ao atualizar o apontamento: {error}',
-        'add_new_btn': 'Adicionar Novo',
-        'edit_selected_btn': 'Editar Selecionado',
-        'delete_selected_btn': 'Excluir Selecionado',
     },
 }
 
 # ==============================================================================
-#   FUNÇÕES E CLASSES DE DEPENDÊNCIA (DEFINIDAS PRIMEIRO)
+# 2. FUNÇÕES E CLASSES DE DEPENDÊNCIA (DEFINIDAS PRIMEIRO)
 # ==============================================================================
 
 def get_connection_params(config_dict):
@@ -127,7 +123,6 @@ class LookupTableManagerWindow(Toplevel):
         "fsc_tipos": {"display_name_key": "col_fsc", "table": "fsc_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
         "turnos_tipos": {"display_name_key": "shift_label", "table": "turnos_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
     }
-    
     def __init__(self, master, db_config, refresh_main_comboboxes_callback=None):
         super().__init__(master)
         self.master = master
@@ -307,9 +302,98 @@ class LookupTableManagerWindow(Toplevel):
         finally:
             if conn: conn.close()
 
+
+class RealTimeStopWindow(Toplevel):
+    def __init__(self, master, db_config, stop_callback):
+        super().__init__(master)
+        self.master = master
+        self.db_config = db_config
+        self.stop_callback = stop_callback
+
+        self.title(self.master.get_string('stop_tracking_window_title'))
+        self.geometry("500x250")
+        self.transient(master)
+        self.grab_set()
+
+        self.start_time = datetime.now()
+        self.motivos_parada_options = []
+        self.timer_job = None
+
+        self.create_widgets()
+        self.load_motivos_parada()
+        self.update_timer()
     
+    def get_string(self, key, **kwargs):
+        return self.master.get_string(key, **kwargs)
+
+    def create_widgets(self):
+        main_frame = tb.Frame(self, padding=20)
+        main_frame.pack(fill=BOTH, expand=YES)
+        
+        tb.Label(main_frame, text=self.get_string('stop_reason_label'), font=("Helvetica", 10)).pack(pady=(0, 5))
+        self.motivo_combobox = tb.Combobox(main_frame, state="readonly")
+        self.motivo_combobox.pack(fill=X, pady=(0, 20))
+        self.motivo_combobox.bind("<<ComboboxSelected>>", self.on_reason_selected)
+
+        tb.Label(main_frame, text=self.get_string('stop_time_label'), font=("Helvetica", 10)).pack(pady=(10, 5))
+        self.timer_label = tb.Label(main_frame, text="00:00:00", font=("Helvetica", 20, "bold"), bootstyle=DANGER)
+        self.timer_label.pack()
+
+        self.finish_button = tb.Button(main_frame, text=self.get_string('finish_stop_btn'), bootstyle="danger", state=DISABLED, command=self.finish_stop)
+        self.finish_button.pack(pady=20, ipadx=10, ipady=5)
+
+    def get_db_connection(self):
+        return self.master.get_db_connection()
+
+    def load_motivos_parada(self):
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                schema = LookupTableManagerWindow.lookup_table_schemas["motivos_parada_tipos"]
+                query = f'SELECT "{schema["columns"]["descricao"]["db_column"]}", "{schema["pk_column"]}" FROM {schema["table"]} ORDER BY "{schema["columns"]["descricao"]["db_column"]}"'
+                cur.execute(query)
+                self.motivos_parada_options = cur.fetchall()
+                self.motivo_combobox['values'] = [opt[0] for opt in self.motivos_parada_options]
+        except psycopg2.Error as e:
+            messagebox.showwarning("Erro", f"Falha ao carregar motivos de parada: {e}", parent=self)
+        finally:
+            if conn: conn.close()
+
+    def on_reason_selected(self, event=None):
+        if self.motivo_combobox.get():
+            self.finish_button.config(state=NORMAL)
+
+    def update_timer(self):
+        elapsed = datetime.now() - self.start_time
+        total_seconds = int(elapsed.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        self.timer_label.config(text=f"{hours:02}:{minutes:02}:{seconds:02}")
+        self.timer_job = self.after(1000, self.update_timer)
+
+    def finish_stop(self):
+        if self.timer_job:
+            self.after_cancel(self.timer_job)
+        
+        end_time = datetime.now()
+        selected_motivo_text = self.motivo_combobox.get()
+        motivo_id = next((opt[1] for opt in self.motivos_parada_options if opt[0] == selected_motivo_text), None)
+
+        stop_data = {
+            "motivo_text": selected_motivo_text,
+            "motivo_id": motivo_id,
+            "hora_inicio_parada": self.start_time.time(),
+            "hora_fim_parada": end_time.time(),
+            "motivo_extra_detail": None
+        }
+        
+        self.stop_callback(stop_data)
+        self.destroy()    
+
+
 # ==============================================================================
-# CLASSES DE GERENCIAMENTO PCP (EDITAR E PRINCIPAL)
+# 3. CLASSES DE GERENCIAMENTO PCP (EDITAR E PRINCIPAL) - ORDEM CORRIGIDA
 # ==============================================================================
 
 class EditOrdemWindow(Toplevel):
@@ -320,7 +404,6 @@ class EditOrdemWindow(Toplevel):
         self.ordem_id = ordem_id
         self.refresh_callback = refresh_callback
         
-        # Reutiliza a config da janela pai (PCPWindow)
         self.fields_config = self.master.fields_config
         self.widgets = {}
 
@@ -347,7 +430,6 @@ class EditOrdemWindow(Toplevel):
         for key, config in self.fields_config.items():
             tb.Label(form_frame, text=self.get_string(config["label_key"]) + ":").grid(row=row, column=0, padx=5, pady=5, sticky=W)
             if config["widget"] == "Combobox":
-                # Pega os valores do combobox correspondente na janela pai
                 widget = tb.Combobox(form_frame, state="readonly", values=self.master.widgets[key]['values'])
             else:
                 widget = tb.Entry(form_frame)
@@ -410,17 +492,14 @@ class EditOrdemWindow(Toplevel):
         finally:
             if conn: conn.close()
 
-
 class PCPWindow(Toplevel):
     def __init__(self, master, db_config):
         super().__init__(master)
         self.master = master
         self.db_config = db_config
-
         self.title("Gerenciamento de Ordens de Produção (PCP)")
         self.geometry("800x600")
         self.grab_set()
-
         self.fields_config = {
             "numero_wo": {"label_key": "col_wo", "widget": "Entry"},
             "cliente": {"label_key": "col_cliente", "widget": "Entry"},
@@ -432,7 +511,6 @@ class PCPWindow(Toplevel):
             "fsc": {"label_key": "col_fsc", "widget": "Combobox", "lookup": "fsc_tipos"},
             "numero_inspecao": {"label_key": "col_numeroinspecao", "widget": "Entry"},
         }
-
         self.widgets = {}
         self.create_widgets()
         self.load_combobox_data()
@@ -471,7 +549,7 @@ class PCPWindow(Toplevel):
 
         tree_container = tb.Frame(main_frame)
         tree_container.pack(fill=BOTH, expand=True, pady=(10, 0))
-
+        
         action_frame = tb.Frame(tree_container)
         action_frame.pack(fill=X, pady=5)
         
@@ -483,7 +561,7 @@ class PCPWindow(Toplevel):
 
         tree_frame = tb.LabelFrame(tree_container, text="Ordens de Produção Criadas", bootstyle=INFO, padding=10)
         tree_frame.pack(fill=BOTH, expand=True)
-
+        
         cols = ("id", "wo", "cliente", "equipamento", "status")
         headers = ("ID", "Nº WO", "Cliente", "Equipamento", "Status")
         self.tree = tb.Treeview(tree_frame, columns=cols, show="headings", bootstyle=PRIMARY)
@@ -521,15 +599,12 @@ class PCPWindow(Toplevel):
         if not selected_item:
             messagebox.showwarning(self.get_string('selection_required_title'), self.get_string('select_order_to_edit_msg'), parent=self)
             return
-
         item_values = self.tree.item(selected_item, 'values')
         ordem_id = item_values[0]
         status = item_values[-1]
-
         if status != 'Em Aberto':
             messagebox.showwarning("Ação Inválida", self.get_string('invalid_status_for_action_msg'), parent=self)
             return
-        
         EditOrdemWindow(self, self.db_config, ordem_id, self.load_ordens)
 
     def cancel_ordem(self):
@@ -537,17 +612,13 @@ class PCPWindow(Toplevel):
         if not selected_item:
             messagebox.showwarning(self.get_string('selection_required_title'), self.get_string('select_order_to_cancel_msg'), parent=self)
             return
-            
         item_values = self.tree.item(selected_item, 'values')
         ordem_id, wo_num, status = item_values[0], item_values[1], item_values[-1]
-
         if status != 'Em Aberto':
             messagebox.showwarning("Ação Inválida", self.get_string('invalid_status_for_action_msg'), parent=self)
             return
-            
         if not messagebox.askyesno(self.get_string('confirm_cancel_order_title'), self.get_string('confirm_cancel_order_msg', wo=wo_num), parent=self):
             return
-            
         conn = self.get_db_connection()
         if not conn: return
         try:
@@ -565,10 +636,8 @@ class PCPWindow(Toplevel):
     def load_ordens(self):
         self.edit_button.config(state=DISABLED)
         self.cancel_button.config(state=DISABLED)
-        
         for i in self.tree.get_children():
             self.tree.delete(i)
-        
         conn = self.get_db_connection()
         if not conn: return
         try:
@@ -591,7 +660,6 @@ class PCPWindow(Toplevel):
                     if isinstance(widget, tb.Combobox):
                         field_config = self.fields_config.get(key, {})
                         lookup_ref = field_config.get("lookup")
-
                         if lookup_ref and lookup_ref in schemas:
                             schema_info = schemas[lookup_ref]
                             display_col_info = next((v for v in schema_info['columns'].values() if v['editable']), None)
@@ -607,37 +675,30 @@ class PCPWindow(Toplevel):
             
     def save_new_ordem(self):
         data = {key: widget.get().strip() for key, widget in self.widgets.items()}
-
         if not data["numero_wo"]:
             messagebox.showwarning("Campo Obrigatório", "O número da WO é obrigatório.", parent=self)
             return
-
         conn = self.get_db_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
                 cols_to_save = ['numero_wo', 'cliente', 'equipamento', 'qtde_cores', 'tipo_papel', 'gramatura', 'formato', 'fsc', 'numero_inspecao']
                 non_empty_data = {col: data[col] for col in cols_to_save if data[col]}
-
                 if not non_empty_data:
                     messagebox.showwarning("Dados Vazios", "Nenhum dado para salvar.", parent=self)
                     return
-                
                 if 'gramatura' in non_empty_data:
                     non_empty_data['gramatura'] = int(non_empty_data['gramatura'])
-
                 cols = non_empty_data.keys()
                 query = f"""
                     INSERT INTO ordem_producao ({', '.join(cols)}, status)
                     VALUES ({', '.join([f"%({c})s" for c in cols])}, 'Em Aberto')
                 """
-                
                 cur.execute(query, non_empty_data)
             conn.commit()
             messagebox.showinfo("Sucesso", "Ordem de produção salva com sucesso!", parent=self)
             self.clear_fields()
             self.load_ordens()
-            # Atualiza a janela de produção se ela estiver aberta
             if 'production' in self.master.open_windows and self.master.open_windows['production'].winfo_exists():
                 self.master.open_windows['production'].load_open_wos()
         except psycopg2.IntegrityError:
@@ -657,7 +718,7 @@ class PCPWindow(Toplevel):
                 widget.delete(0, END)
 
 # ==============================================================================
-#   CLASSE PRINCIPAL DE APONTAMENTO (App)
+# 5. CLASSE PRINCIPAL DE APONTAMENTO (App)
 # ==============================================================================
 class App(Toplevel):
     def __init__(self, master, db_config):
@@ -665,20 +726,16 @@ class App(Toplevel):
         self.master = master
         self.db_config = db_config
         self.current_language = self.db_config.get('language', 'portugues')
-        
         self.grab_set()
         self.set_localized_title()
         self.geometry("1100x750")
-
         self.start_time = None
         self.end_time = None
         self.timer_job = None
         self.is_running = False
-        
         self.stop_times_data = []
         self.selected_ordem_id = None
         self.open_wos_data = {}
-
         self.final_entry_fields_config = {
             "Tiragem em folhas": {"db_column": "tiragem_em_folhas", "widget_type": "Entry", "validation_type": "int", "display_key": "col_tiragem_em_folhas"},
             "Giros Rodados": {"db_column": "giros_rodados", "widget_type": "Entry", "validation_type": "int", "display_key": "col_giros_rodados"},
@@ -688,15 +745,12 @@ class App(Toplevel):
             "Quantidade Produzida": {"db_column": "quantidadeproduzida", "widget_type": "Entry", "validation_type": "int", "display_key": "col_quantidadeproduzida"},
             "Ocorrências": {"db_column": "ocorrencias", "widget_type": "Text", "height": 4, "width": 50, "display_key": "col_ocorrencias"},
         }
-        
         self.initial_selection_fields_config = {
              "Impressor": {"db_column": "impressor", "widget_type": "Combobox", "values": [], "display_key": "printer_label", "lookup_table_ref": "impressores"},
              "Turno": {"db_column": "turno", "widget_type": "Combobox", "values": [], "display_key": "shift_label", "lookup_table_ref": "turnos_tipos"},
         }
-
         self.fields = {}
         self.validation_labels = {}
-        
         self.create_menu()
         self.create_form()
         self.load_initial_data()
@@ -883,278 +937,7 @@ class App(Toplevel):
             messagebox.showerror("Erro ao Salvar", f"Não foi possível salvar o apontamento: {e}", parent=self)
         finally:
             if conn: conn.close()
-
-    def load_ordens(self):        # Desabilita os botões antes de carregar
-        self.edit_button.config(state=DISABLED)
-        self.cancel_button.config(state=DISABLED)    
-        for i in self.tree.get_children():
-            self.tree.delete(i)
-
-        conn = self.get_db_connection()
-        if not conn: return
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT id, numero_wo, cliente, equipamento, status FROM ordem_producao ORDER BY data_criacao DESC")
-                for row in cur.fetchall():
-                    self.tree.insert("", END, values=row)
-        except psycopg2.Error as e:
-            messagebox.showerror("Erro ao Carregar", f"Falha ao carregar ordens de produção: {e}", parent=self)
-        finally:
-            if conn: conn.close()
-
-    def clear_fields(self):
-        for widget in self.widgets.values():
-            if isinstance(widget, tb.Combobox):
-                widget.set('')
-            else:
-                widget.delete(0, END)
-
-
-class App(Toplevel):
-    def __init__(self, master, db_config):
-        super().__init__(master)
-        self.master = master
-        self.db_config = db_config
-        self.current_language = self.db_config.get('language', 'portugues')
-        
-        self.grab_set()
-        self.set_localized_title()
-        self.geometry("1100x750")
-
-        # Variáveis de estado
-        self.start_time = None
-        self.end_time = None
-        self.timer_job = None
-        self.is_running = False
-        
-        self.stop_times_data = []
-        self.selected_ordem_id = None
-        self.open_wos_data = {}
-
-        # Configuração de campos
-        self.final_entry_fields_config = {
-            "Tiragem em folhas": {"db_column": "tiragem_em_folhas", "widget_type": "Entry", "validation_type": "int", "display_key": "col_tiragem_em_folhas"},
-            "Giros Rodados": {"db_column": "giros_rodados", "widget_type": "Entry", "validation_type": "int", "display_key": "col_giros_rodados"},
-            "Perdas/ Malas": {"db_column": "perdas_malas", "widget_type": "Entry", "validation_type": "int", "display_key": "col_perdas_malas"},
-            "Total Lavagens": {"db_column": "total_lavagens", "widget_type": "Entry", "validation_type": "int", "display_key": "col_total_lavagens"},
-            "Total Acertos": {"db_column": "total_acertos", "widget_type": "Entry", "validation_type": "int", "display_key": "col_total_acertos"},
-            "Quantidade Produzida": {"db_column": "quantidadeproduzida", "widget_type": "Entry", "validation_type": "int", "display_key": "col_quantidadeproduzida"},
-            "Ocorrências": {"db_column": "ocorrencias", "widget_type": "Text", "height": 4, "width": 50, "display_key": "col_ocorrencias"},
-        }
-        
-        self.initial_selection_fields_config = {
-             "Impressor": {"db_column": "impressor", "widget_type": "Combobox", "values": [], "display_key": "printer_label", "lookup_table_ref": "impressores"},
-             "Turno": {"db_column": "turno", "widget_type": "Combobox", "values": [], "display_key": "shift_label", "lookup_table_ref": "turnos_tipos"},
-        }
-        
-        self.full_form_config_for_edit = {**self.initial_selection_fields_config, **self.final_entry_fields_config}
-
-        self.fields = {}
-        self.validation_labels = {}
-        
-        self.create_menu()
-        self.create_form()
-        self.load_initial_data()
-        self.update_ui_state()
-
-    def get_string(self, key, **kwargs):
-        # Acessa o dicionário de traduções do master (MainMenu)
-        return self.master.get_string(key, **kwargs)
-
-    def set_localized_title(self):
-        self.title(self.get_string('btn_production_entry'))
-    
-    def create_menu(self):
-        self.menubar = tb.Menu(self)
-        manage_menu = tb.Menu(self.menubar, tearoff=0)
-        manage_menu.add_command(label=self.get_string('menu_manage_pcp'), command=lambda: self.master.open_pcp_window())
-        manage_menu.add_separator()
-        manage_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self.master, self.db_config, self.load_initial_data))
-        manage_menu.add_command(label=self.get_string('menu_view_appointments'), command=lambda: self.master.open_view_window())
-        self.menubar.add_cascade(label=self.get_string('menu_manage'), menu=manage_menu)
-        self.config(menu=self.menubar)
-
-    def create_form(self):
-        main_frame = tb.Frame(self, padding=10)
-        main_frame.pack(fill=BOTH, expand=YES)
-        main_frame.grid_columnconfigure(0, weight=1)
-        main_frame.grid_rowconfigure(2, weight=1)
-
-        top_frame = tb.Frame(main_frame)
-        top_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
-        top_frame.grid_columnconfigure(0, weight=1)
-        top_frame.grid_columnconfigure(1, weight=1)
-
-        selection_frame = tb.LabelFrame(top_frame, text="1. Seleção Inicial", bootstyle=PRIMARY, padding=15)
-        selection_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
-        selection_frame.grid_columnconfigure(1, weight=1)
-        
-        tb.Label(selection_frame, text="Selecionar WO:").grid(row=0, column=0, sticky=W, padx=5, pady=5)
-        self.wo_combobox = tb.Combobox(selection_frame, state="readonly")
-        self.wo_combobox.grid(row=0, column=1, sticky=EW, padx=5, pady=5)
-        
-        row = 1
-        for key, cfg in self.initial_selection_fields_config.items():
-            tb.Label(selection_frame, text=self.get_string(cfg["display_key"]) + ":").grid(row=row, column=0, sticky=W, padx=5, pady=5)
-            widget = tb.Combobox(selection_frame, state="readonly")
-            widget.grid(row=row, column=1, sticky=EW, padx=5, pady=5)
-            self.fields[cfg["db_column"]] = widget
-            row += 1
-
-        control_frame = tb.LabelFrame(top_frame, text="2. Controle da Produção", bootstyle=PRIMARY, padding=15)
-        control_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
-        control_frame.grid_columnconfigure(1, weight=1)
-
-        self.start_finish_button = tb.Button(control_frame, text=self.get_string('start_production_btn'), bootstyle="success", command=self.toggle_production)
-        self.start_finish_button.grid(row=0, column=0, padx=10, pady=10)
-        
-        self.status_label = tb.Label(control_frame, text=self.get_string('production_status_idle'), font=("Helvetica", 14, "bold"), bootstyle="secondary")
-        self.status_label.grid(row=0, column=1, padx=10)
-
-        self.timer_label = tb.Label(control_frame, text="00:00:00", font=("Helvetica", 20, "bold"), bootstyle=INFO)
-        self.timer_label.grid(row=0, column=2, sticky=E, padx=10)
-
-        live_entry_frame = tb.LabelFrame(main_frame, text="3. Apontamentos em Processo", bootstyle=PRIMARY, padding=15)
-        live_entry_frame.grid(row=1, column=0, sticky="ew", pady=10)
-        
-        self.stops_button = tb.Button(live_entry_frame, text="Apontar Nova Parada", command=self.open_realtime_stop_window, state=DISABLED)
-        self.stops_button.pack(pady=(0, 10))
-        
-        cols = ('motivo', 'inicio', 'fim', 'duracao')
-        headers = ('Motivo da Parada', 'Hora Início', 'Hora Fim', 'Duração')
-        self.stops_tree = tb.Treeview(live_entry_frame, columns=cols, show='headings', height=4)
-        for col, header in zip(cols, headers):
-            self.stops_tree.heading(col, text=header)
-            self.stops_tree.column(col, anchor=CENTER, width=150)
-        self.stops_tree.pack(fill=X, expand=YES)
-
-        self.final_data_frame = tb.LabelFrame(main_frame, text="4. Dados Finais (Preencher ao Finalizar)", bootstyle=PRIMARY, padding=15)
-        self.final_data_frame.grid(row=2, column=0, sticky="ew", pady=10)
-        
-        per_col = (len(self.final_entry_fields_config) + 1) // 2
-        i = 0
-        for key, cfg in self.final_entry_fields_config.items():
-            row, col_offset = (i % per_col, 0) if i < per_col else (i % per_col, 3)
-            tb.Label(self.final_data_frame, text=self.get_string(cfg["display_key"]) + ":").grid(row=row, column=col_offset, sticky=W, padx=5, pady=2)
-            if cfg["widget_type"] == "Text":
-                widget = tb.Text(self.final_data_frame, height=cfg.get("height", 3), width=cfg.get("width", 40))
-                text_scroll = tb.Scrollbar(self.final_data_frame, orient=VERTICAL, command=widget.yview)
-                text_scroll.grid(row=row, column=col_offset+2, sticky='ns')
-                widget['yscrollcommand'] = text_scroll.set
-            else:
-                widget = tb.Entry(self.final_data_frame)
             
-            widget.grid(row=row, column=col_offset + 1, padx=5, pady=2, sticky=EW)
-            self.fields[cfg["db_column"]] = widget
-            
-            v_label = tb.Label(self.final_data_frame, text="", bootstyle="danger", font="Helvetica 9 italic")
-            v_label.grid(row=row, column=col_offset + 3, sticky=W, padx=5)
-            self.validation_labels[cfg["db_column"]] = v_label
-            i += 1
-        
-        self.final_data_frame.grid_columnconfigure(1, weight=1)
-        self.final_data_frame.grid_columnconfigure(4, weight=1)
-        
-        self.register_button = tb.Button(main_frame, text=self.get_string('register_entry_btn'), bootstyle="primary-outline", command=self.submit)
-        self.register_button.grid(row=3, column=0, pady=10, ipadx=20, ipady=10)
-
-    def get_db_connection(self):
-        # Reutiliza o método da janela principal
-        return self.master.get_db_connection()
-
-    def submit(self):
-        if not self.selected_ordem_id or not self.end_time:
-            messagebox.showerror("Erro", "A produção não foi iniciada ou finalizada corretamente.", parent=self)
-            return
-
-        # --- LÓGICA CORRIGIDA PARA COLETAR DADOS ---
-        # 1. Pega os nomes das colunas dos campos finais
-        final_db_cols = [cfg['db_column'] for cfg in self.final_entry_fields_config.values()]
-        
-        # 2. Coleta os dados apenas desses campos
-        data = {db_col: w.get("1.0", "end-1c").strip() if isinstance(w, tb.Text) else w.get().strip()
-                for db_col, w in self.fields.items() if db_col in final_db_cols}
-        
-        # 3. Validação
-        is_valid = True
-        for db_col, val in data.items():
-            # Encontra a configuração correta para obter o tipo de validação
-            cfg_key = next((k for k, v in self.final_entry_fields_config.items() if v['db_column'] == db_col), None)
-            if not cfg_key: continue
-            
-            cfg = self.final_entry_fields_config[cfg_key]
-            v_type = cfg.get("validation_type")
-            
-            # Validação para campos inteiros não vazios
-            if v_type == 'int' and val and not val.isdigit():
-                self.validation_labels[db_col].config(text="Deve ser um número")
-                is_valid = False
-            else:
-                self.validation_labels[db_col].config(text="")
-        
-        if not is_valid:
-            messagebox.showerror("Dados Inválidos", "Corrija os campos marcados.", parent=self)
-            return
-            
-        # 4. Prepara os dados para salvar (p_data)
-        p_data = {cfg['db_column']: self.fields[cfg['db_column']].get() for cfg in self.initial_selection_fields_config.values()}
-        
-        for db_col, val in data.items():
-            cfg_key = next(k for k, v in self.final_entry_fields_config.items() if v['db_column'] == db_col)
-            cfg = self.final_entry_fields_config[cfg_key]
-            if cfg.get("validation_type") == 'int' and val:
-                p_data[db_col] = int(val)
-            else:
-                p_data[db_col] = val if val else None
-
-        # Adiciona dados automáticos e de consistência
-        p_data['data'] = self.start_time.date()
-        p_data['horainicio'] = self.start_time.time()
-        p_data['horafim'] = self.end_time.time()
-        p_data['ordem_id'] = self.selected_ordem_id
-        
-        wo_data = self.open_wos_data.get(self.wo_combobox.get(), {})
-        p_data['wo'] = self.wo_combobox.get().split(' - ')[0]
-        p_data['cliente'] = wo_data.get('cliente')
-        p_data['equipamento'] = wo_data.get('equipamento')
-        p_data['qtde_cores'] = wo_data.get('qtde_cores')
-        p_data['tipo_papel'] = wo_data.get('tipo_papel')
-        p_data['formato'] = wo_data.get('formato')
-        p_data['gramatura'] = wo_data.get('gramatura')
-        p_data['fsc'] = wo_data.get('fsc')
-
-        # Salva no banco
-        conn = self.get_db_connection()
-        if not conn: return
-        try:
-            with conn.cursor() as cur:
-                all_db_cols = list(p_data.keys())
-                q_cols = ', '.join([f'"{c}"' for c in all_db_cols])
-                placeholders = ', '.join(['%s'] * len(all_db_cols))
-                values = [p_data.get(c) for c in all_db_cols]
-                
-                query = f"INSERT INTO {self.db_config['tabela']} ({q_cols}) VALUES ({placeholders}) RETURNING id;"
-                cur.execute(query, values)
-                app_id = cur.fetchone()[0]
-
-                if self.stop_times_data:
-                    for stop in self.stop_times_data:
-                        stop_q = "INSERT INTO paradas (apontamento_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s);"
-                        cur.execute(stop_q, (app_id, stop['motivo_id'], stop['hora_inicio_parada'], stop['hora_fim_parada'], stop['motivo_extra_detail']))
-            
-            conn.commit()
-            messagebox.showinfo("Sucesso", "Apontamento registrado com sucesso!", parent=self)
-            self.update_wo_status("Concluido")
-            self.destroy()
-
-        except Exception as e:
-            if conn: conn.rollback()
-            messagebox.showerror("Erro ao Salvar", f"Não foi possível salvar o apontamento: {e}", parent=self)
-        finally:
-            if conn: conn.close()
-            
-    # --- Restante dos métodos da classe App ---
-
     def toggle_production(self):
         if not self.is_running:
             wo_val = self.wo_combobox.get()
@@ -1197,7 +980,6 @@ class App(Toplevel):
             for cfg in self.final_entry_fields_config.values():
                 self.fields[cfg['db_column']].config(state=DISABLED)
             self.register_button.config(state=DISABLED)
-
         elif self.start_time and not self.is_running:
             self.start_finish_button.config(state=DISABLED)
             self.status_label.config(text=self.get_string('production_status_stopped'), bootstyle="warning")
@@ -1205,7 +987,6 @@ class App(Toplevel):
             for cfg in self.final_entry_fields_config.values():
                 self.fields[cfg['db_column']].config(state=NORMAL)
             self.register_button.config(state=NORMAL)
-
         else:
             self.start_finish_button.config(text=self.get_string('start_production_btn'), bootstyle="success")
             self.status_label.config(text=self.get_string('production_status_idle'), bootstyle="secondary")
@@ -1303,7 +1084,7 @@ class App(Toplevel):
                 cur.execute("UPDATE ordem_producao SET status = %s WHERE id = %s", (status, self.selected_ordem_id))
             conn.commit()
         except psycopg2.Error as e:
-            conn.rollback()
+            if conn: conn.rollback()
             messagebox.showerror("Erro de BD", f"Falha ao atualizar o status da WO: {e}", parent=self)
         finally:
             if conn: conn.close()
@@ -1315,7 +1096,6 @@ class App(Toplevel):
         if not widget.get(): widget.insert(0, placeholder)
 
     def clear_form(self):
-        # Reinicia a máquina de estados e limpa os campos
         self.is_running = False
         self.start_time = None
         self.end_time = None
@@ -1334,10 +1114,9 @@ class App(Toplevel):
         self.stop_times_data = []
         self.refresh_stops_tree()
         self.update_ui_state()
-            
 
 # ==============================================================================
-#   CLASSE DE MENU PRINCIPAL
+# 6. CLASSE DE MENU PRINCIPAL
 # ==============================================================================
 class MainMenu(tb.Window):
     def __init__(self):
@@ -1480,7 +1259,7 @@ class MainMenu(tb.Window):
             messagebox.showerror(self.get_string('test_connection_btn'), self.get_string('test_connection_failed_db', error=e), parent=parent_win)
 
 # ==============================================================================
-#  PONTO DE ENTRADA DA APLICAÇÃO
+# 7. PONTO DE ENTRADA DA APLICAÇÃO
 # ==============================================================================
 if __name__ == "__main__":
     main_app = MainMenu()
