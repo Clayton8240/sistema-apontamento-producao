@@ -1,9 +1,1 @@
-{
-    "host": "192.168.38.107",
-    "porta": "5432",
-    "usu\u00e1rio": "mentor",
-    "senha": "MM&Br4zil",
-    "banco": "apontamentooffset",
-    "tabela": "apontamento",
-    "language": "portugues"
-}
+ewogICAgImhvc3QiOiAiMTkyLjE2OC4zOC4xMDciLAogICAgInBvcnRhIjogIjU0MzIiLAogICAgInVzdVx1MDBlMXJpbyI6ICJtZW50b3IiLAogICAgInNlbmhhIjogIk1NJkJyNHppbCIsCiAgICAiYmFuY28iOiAiYXBvbnRhbWVudG9vZmZzZXQiLAogICAgInRhYmVsYSI6ICJhcG9udGFtZW50byIsCiAgICAibGFuZ3VhZ2UiOiAicG9ydHVndWVzIgp9

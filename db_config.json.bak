@@ -1,0 +1,9 @@
+{
+    "host": "192.168.38.107",
+    "porta": "5432",
+    "usuário": "mentor",
+    "senha": "MM&Br4zil",
+    "banco": "apontamentooffset",
+    "tabela": "apontamento",
+    "language": "portugues"
+}

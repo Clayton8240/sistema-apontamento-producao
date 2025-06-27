@@ -1,3 +1,5 @@
+import base64
+import openpyxl
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from ttkbootstrap import DateEntry
@@ -8,6 +10,9 @@ import json
 import os
 import csv
 
+# ==============================================================================
+# STRINGS (Traduções)
+# ==============================================================================
 # ==============================================================================
 # 1. I18N STRINGS (Traduções)
 # ==============================================================================
@@ -98,13 +103,12 @@ LANGUAGES = {
         'created_orders_section': "Ordens de Produção Criadas",
         'services_section_title': 'Etapas da Ordem',
 
-        # Colunas de Tabelas e Campos
+        # Colunas de Tabelas
         'col_id': 'ID', 'col_descricao': 'Descrição', 'col_nome': 'Nome', 'col_codigo': 'Código',
         'col_valor': 'Valor', 'col_data': 'Data', 'col_horainicio': 'Hora Início', 'col_horafim': 'Hora Fim',
         'col_wo': 'WO', 'col_cliente': 'Cliente', 'col_qtde_cores': 'QTDE CORES',
         'col_tipo_papel': 'TIPO PAPEL', 'col_numeroinspecao': 'Número Inspeção', 'col_gramatura': 'Gramatura',
-        'col_formato': 'Formato', 'col_fsc': 'FSC',
-        'col_tiragem_para_impressao': 'Tiragem para Impressão',
+        'col_formato': 'Formato', 'col_fsc': 'FSC', 'col_tiragem_em_folhas': 'Tiragem em Folhas',
         'col_giros_rodados': 'Giros Rodados', 'col_perdas_malas': 'Perdas/ Malas', 'col_total_lavagens': 'Total Lavagens',
         'col_total_acertos': 'Total Acertos', 'col_ocorrencias': 'Ocorrências',
         'col_motivos_parada': 'Motivo da Parada', 'col_quantidadeproduzida': 'Quantidade Produzida',
@@ -114,9 +118,7 @@ LANGUAGES = {
         'col_servico_status': 'Status da Etapa', 'col_sequencia': 'Sequência',
         'col_perdas_producao': 'Perdas (Produção)',
         'col_motivo_perda': 'Motivo da Perda',
-        'col_pn': 'PN (Partnumber)',
-        'col_acabamento': 'Acabamento',
-        'col_giros_previsto': 'Giros Total Previsto',
+
 
         # Menus
         'menu_settings': 'Configurações',
@@ -224,6 +226,214 @@ LANGUAGES = {
         'setup_save_failed': 'Falha ao salvar os dados de Setup: {error}',
         'status_prod_done': 'PRODUÇÃO FINALIZADA',
         'finished': 'CONCLUÍDO',
+    },
+    'english': {
+        # Window and Tab Titles
+        'app_title': 'Production Tracking System',
+        'main_menu_title': 'Main Menu - Production System',
+        'stop_tracking_window_title': 'Real-Time Stop Tracking',
+        'config_win_title': 'Database Settings',
+        'manager_title': 'Lookup Table Manager',
+        'edit_order_title': 'Edit Production Order - WO: {wo}',
+        'confirm_cancel_order_title': 'Confirm Cancellation',
+        'view_appointments_title': 'View Entries',
+        'stop_times_window_title': 'Stop Time Entry',
+        'confirm_delete_appointment_title': 'Confirm Entry Deletion',
+        'edit_appointment_title': 'Edit Entry - ID: {id}',
+        'stop_details_for_appointment': 'Stop Details for Entry ID: {id}',
+        'service_manager_title': 'Step Manager - WO: {wo}',
+        'add_service_title': 'Add New Step',
+        'edit_service_title': 'Edit Step',
+
+        # Buttons
+        'btn_production_entry': 'Production Entry',
+        'btn_pcp_management': 'PCP Management',
+        'btn_view_entries': 'View Entries',
+        'btn_manage_tables': 'Manage Lookup Tables',
+        'start_production_btn': 'Start Production',
+        'finish_production_btn': 'Finish Production',
+        'register_entry_btn': 'Register Final Entry',
+        'finish_stop_btn': 'Finish Stop',
+        'test_connection_btn': 'Test Connection',
+        'save_btn': 'Save',
+        'cancel_btn': 'Cancel',
+        'save_changes_btn': 'Save Changes',
+        'edit_order_btn': 'Edit Selected Order',
+        'cancel_order_btn': 'Cancel Selected Order',
+        'add_new_btn': 'Add New',
+        'edit_selected_btn': 'Edit Selected',
+        'delete_selected_btn': 'Delete Selected',
+        'apply_filters_btn': 'Apply Filters',
+        'clear_filters_btn': 'Clear Filters',
+        'export_csv_btn': 'Export to CSV',
+        'open_stop_times_btn': 'Configure Stops',
+        'generate_fields_btn': 'Generate Fields',
+        'view_stop_details_btn': 'View Stop Details',
+        'edit_appointment_btn': 'Edit Entry',
+        'delete_appointment_btn': 'Delete Entry',
+        'btn_manage_services': 'Manage Steps',
+        'add_service_btn': 'Add Step',
+        'edit_service_btn': 'Edit Step',
+        'delete_service_btn': 'Delete Step',
+
+        # Labels and UI Text
+        'production_status_running': 'IN PRODUCTION',
+        'production_status_stopped': 'STOPPED',
+        'production_status_idle': 'WAITING FOR START',
+        'elapsed_time_label': 'Elapsed Time:',
+        'stop_reason_label': 'Stop Reason:',
+        'stop_time_label': 'Stop Time:',
+        'host_label': 'Host',
+        'port_label': 'Port',
+        'user_label': 'User',
+        'password_label': 'Password',
+        'db_label': 'Database',
+        'table_label': 'Entries Table',
+        'language_label': 'Language',
+        'equipment_label': 'Equipment',
+        'printer_label': 'Printer Operator',
+        'shift_label': 'Shift',
+        'date_start_label': 'Start Date',
+        'date_end_label': 'End Date',
+        'has_stops_question': 'Are there stops?',
+        'num_stops_label': 'Number of Stops',
+        'stop_label': 'Stop',
+        'other_motives_label': 'Specify Reason',
+        'has_stops_question_short': 'Stops?',
+        'yes_short': 'Yes',
+        'no_short': 'No',
+        'service_select_label': 'Select Step/Service:',
+
+        # Screen Sections (LabelFrame)
+        'form_data_section': 'Data',
+        'filter_section': 'Entry Filters',
+        'manager_select_table': 'Table Selection',
+        'stop_times_control_section': 'Stop Control',
+        'new_order_section': "New Production Order",
+        'created_orders_section': "Created Production Orders",
+        'services_section_title': 'Order Steps',
+
+        # Table Columns
+        'col_id': 'ID', 'col_descricao': 'Description', 'col_nome': 'Name', 'col_codigo': 'Code',
+        'col_valor': 'Value', 'col_data': 'Date', 'col_horainicio': 'Start Time', 'col_horafim': 'End Time',
+        'col_wo': 'WO', 'col_cliente': 'Client', 'col_qtde_cores': 'COLORS QTY',
+        'col_tipo_papel': 'PAPER TYPE', 'col_numeroinspecao': 'Inspection Number', 'col_gramatura': 'Grammage',
+        'col_formato': 'Format', 'col_fsc': 'FSC', 'col_tiragem_em_folhas': 'Sheet Run',
+        'col_giros_rodados': 'Revolutions', 'col_perdas_malas': 'Waste/Setup', 'col_total_lavagens': 'Total Washes',
+        'col_total_acertos': 'Total Adjustments', 'col_ocorrencias': 'Occurrences',
+        'col_motivos_parada': 'Stop Reason', 'col_quantidadeproduzida': 'Quantity Produced',
+        'col_status': 'Status', 'col_data_criacao': 'Creation Date', 'col_duracao': 'Duration',
+        'col_impressor': 'Printer Operator', 'col_turno': 'Shift', 'col_data_previsao': 'Forecast Date',
+        'col_data_cadastro': 'Registration Date', 'col_servico_descricao': 'Step Description',
+        'col_servico_status': 'Step Status', 'col_sequencia': 'Sequence',
+        'col_perdas_producao': 'Waste (Production)',
+        'col_motivo_perda': 'Waste Reason',
+
+        # Menus
+        'menu_settings': 'Settings',
+        'menu_db_config': 'Configure Database',
+        'menu_manage': 'Manage',
+        'menu_manage_lookup': 'Manage Lookup Tables',
+        'menu_view_appointments': 'View Entries',
+        'menu_manage_pcp': 'Manage Orders (PCP)',
+
+        # Success Messages
+        'cancel_order_success': 'Production Order cancelled successfully!',
+        'update_order_success': 'Production Order updated successfully!',
+        'loaded_appointments_success': 'Data from table "{table_name}" loaded successfully!',
+        'export_success_message': 'Data exported successfully to:\n{path}',
+        'stop_times_saved_success': 'Stop data saved successfully!',
+        'delete_appointment_success': 'Entry ID {id} deleted successfully!',
+        'update_success': 'Entry ID {id} updated successfully!',
+        'entry_edited_success': 'Entry updated successfully!',
+        'new_entry_added_success': 'New entry added successfully!',
+        'delete_success': 'Entry deleted successfully!',
+        'config_save_success': 'Configuration saved successfully. You may need to restart the application.',
+        'test_connection_success': 'Database connection successful!',
+        'order_save_success': 'Production order saved successfully!',
+        'service_saved_success': 'Step saved successfully!',
+        'service_deleted_success': 'Step deleted successfully!',
+        'production_saved_success': 'Production entry registered successfully!',
+
+        # Error and Warning Messages
+        'cancel_order_failed': 'Failed to cancel Production Order: {error}',
+        'update_order_failed': 'Failed to update Production Order: {error}',
+        'selection_required_title': 'Selection Required',
+        'select_order_to_edit_msg': 'Please select an order to edit.',
+        'select_order_to_cancel_msg': 'Please select an order to cancel.',
+        'invalid_status_for_action_msg': 'Action not allowed! Only orders with "Open" status can be edited or cancelled.',
+        'no_data_to_export': 'No data to export.',
+        'export_error': 'Error exporting data to CSV: {error}',
+        'db_load_appointments_failed': 'Failed to load entries from table "{table_name}": {error}',
+        'invalid_num_stops_error': 'Please enter a valid number for the quantity of stops.',
+        'validation_error_invalid_selection': 'Please select a valid item.',
+        'validation_error_time_order': 'End Time must be after Start Time.',
+        'validation_error_fix_fields_stops': 'Please correct the stop fields highlighted in red.',
+        'select_appointment_to_view_stops': 'Please select an entry to view stop details.',
+        'no_stops_for_appointment': 'This entry has no registered stops.',
+        'no_stops_for_appointment_full': 'No stops registered for this entry.',
+        'db_load_stops_failed': 'Failed to load stop details: {error}',
+        'db_conn_incomplete': 'Database configuration is incomplete or missing.',
+        'invalid_input': 'Invalid Input',
+        'filter_date_format_warning': 'Invalid date format for field "{field}". Use YYYY-MM-DD.',
+        'delete_appointment_failed': 'Failed to delete entry: {error}',
+        'select_appointment_to_edit': 'Select an entry to edit.',
+        'select_appointment_to_delete': 'Select an entry to delete.',
+        'update_failed': 'Failed to update entry: {error}',
+        'select_table_warning': 'Please select a table to continue.',
+        'schema_not_found': 'Schema for table "{table_name}" not found.',
+        'db_load_table_failed': 'Failed to load data from table "{display_name}": {error}',
+        'select_entry_to_edit': 'Please select an entry to edit.',
+        'save_entry_validation_error': 'Validation error for field "{field_name}". Please enter a valid integer.',
+        'db_save_failed': 'Failed to save to database. Error: {error}',
+        'db_delete_failed': 'Failed to delete from database. Error: {error}',
+        'config_save_error': 'Failed to save configuration file: {error}',
+        'test_connection_warning_fill_fields': 'Please fill all connection fields to test.',
+        'test_connection_failed_db': 'Database connection failed: {error}',
+        'required_field_warning': 'The field "{field_name}" is required.',
+        'integrity_error_wo': "The WO '{wo}' already exists.",
+        'save_order_error': 'Could not save the order. Please check if the data is correct.\nDetails: {error}',
+        'empty_data_warning': "No data to save.",
+        'generic_load_error': 'Failed to load data: {error}',
+        'service_save_failed': 'Failed to save the step: {error}',
+        'service_delete_failed': 'Failed to delete the step: {error}',
+        'no_pending_services': 'No pending steps for this WO.',
+        'select_wo_first': 'Select a WO to see the steps.',
+        'select_service_to_edit': 'Select a step to edit.',
+        'select_service_to_delete': 'Select a step to delete.',
+        'production_save_failed': 'Failed to save production entry: {error}',
+        'final_appointment_validation_error': 'The "Revolutions" and "Quantity Produced" fields are required.',
+
+        # Confirmation Messages
+        'confirm_cancel_order_msg': 'Are you sure you want to permanently cancel the order with WO "{wo}"? This action cannot be undone.',
+        'confirm_delete_appointment_msg': 'Are you sure you want to permanently delete the entry with ID {id}? All associated stops will also be deleted. This action cannot be undone.',
+        'confirm_delete_title': 'Confirm Deletion',
+        'confirm_delete_message': 'Are you sure you want to permanently delete the entry with ID "{pk_value}" from the "{display_name}" table?',
+        'confirm_delete_service_msg': 'Are you sure you want to delete the step "{desc}"?',
+
+        # Others
+        'csv_files_type': 'CSV Files',
+        'all_files_type': 'All Files',
+        'save_csv_dialog_title': 'Save as CSV',
+
+        'initial_selection_section': '1. Initial Selection',
+        'setup_section': '2. Setup Entry',
+        'production_section': '3. Production Entry',
+        'start_setup_btn': 'Start Setup',
+        'finish_setup_btn': 'Finish Setup',
+        'point_setup_stop_btn': 'Log Setup Stop',
+        'point_prod_stop_btn': 'Log Production Stop',
+        'col_perdas': 'Waste (Setup)',
+        'col_malas': 'Setup Sheets',
+        'status_idle': 'IDLE',
+        'status_setup_running': 'SETUP IN PROGRESS',
+        'status_setup_done': 'SETUP FINISHED',
+        'status_prod_running': 'PRODUCTION IN PROGRESS',
+        'setup_fields_required': 'All Setup fields (Waste, Setup Sheets, Washes, Inspection No.) must be filled to finish.',
+        'setup_saved_success': 'Setup data saved successfully! Proceed to production.',
+        'setup_save_failed': 'Failed to save Setup data: {error}',
+        'status_prod_done': 'PRODUCTION FINISHED',
+        'finished': 'COMPLETED',
     },
 }
 
@@ -715,6 +925,9 @@ class ServiceManagerWindow(Toplevel):
         finally:
             if conn: conn.close()
 
+# ===================================================
+#  INÍCIO DA CLASSE EditOrdemWindow
+# ===================================================
 class EditOrdemWindow(Toplevel):
     def __init__(self, master, db_config, ordem_id, refresh_callback):
         super().__init__(master)
@@ -725,15 +938,23 @@ class EditOrdemWindow(Toplevel):
         
         self.fields_config = self.master.fields_config
         self.widgets = {}
+        # NOVO: Mapa de giros também na janela de edição
+        self.giros_map = self.master.giros_map
 
         self.create_widgets()
         self.load_ordem_data()
         
         self.transient(master)
         self.grab_set()
+        self.update_idletasks()
+        w, h = self.winfo_width(), self.winfo_height()
+        sw, sh = self.master.winfo_screenwidth(), self.master.winfo_screenheight()
+        x, y = (sw // 2) - (w // 2), (sh // 2) - (h // 2)
+        self.geometry(f"{w}x{h}+{x}+{y}")
 
     def get_string(self, key, **kwargs):
-        return self.master.get_string(key, **kwargs)
+        lang_dict = LANGUAGES.get(self.master.current_language, LANGUAGES['portugues'])
+        return lang_dict.get(key, key).format(**kwargs)
 
     def get_db_connection(self):
         return self.master.get_db_connection()
@@ -741,52 +962,95 @@ class EditOrdemWindow(Toplevel):
     def create_widgets(self):
         main_frame = tb.Frame(self, padding=15)
         main_frame.pack(fill=BOTH, expand=YES)
-        
         form_frame = tb.LabelFrame(main_frame, text=self.get_string('form_data_section'), bootstyle=PRIMARY, padding=10)
         form_frame.pack(fill=X, pady=(0, 10), anchor=N)
 
-        row = 0
-        for key, config in self.fields_config.items():
-            tb.Label(form_frame, text=self.get_string(config["label_key"]) + ":").grid(row=row, column=0, padx=5, pady=5, sticky=W)
-            if config["widget"] == "Combobox":
-                widget = tb.Combobox(form_frame, state="readonly", values=self.master.widgets[key]['values'])
-            elif config["widget"] == "DateEntry":
-                widget = DateEntry(form_frame, dateformat='%d/%m/%Y')
-            else: # Entry or other
-                widget = tb.Entry(form_frame)
-            widget.grid(row=row, column=1, padx=5, pady=5, sticky=EW)
+        fields_left = ["numero_wo", "pn_partnumber", "cliente", "data_previsao_entrega", "tiragem_em_folhas", "equipamento"]
+        fields_middle = ["giros_previstos", "qtde_cores", "tipo_papel", "gramatura", "formato", "fsc"]
+        
+        for i, key in enumerate(fields_left):
+            if key not in self.fields_config: continue
+            config = self.fields_config[key]
+            tb.Label(form_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky=W)
+            widget = self.master.create_widget_from_config(form_frame, config)
+            widget.grid(row=i, column=1, padx=5, pady=5, sticky=EW)
             self.widgets[key] = widget
-            row += 1
+
+        for i, key in enumerate(fields_middle):
+            if key not in self.fields_config: continue
+            config = self.fields_config[key]
+            tb.Label(form_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=2, padx=5, pady=5, sticky=W)
+            widget = self.master.create_widget_from_config(form_frame, config)
+            widget.grid(row=i, column=3, padx=5, pady=5, sticky=EW)
+            self.widgets[key] = widget
+            
+        self.widgets["tiragem_em_folhas"].bind("<KeyRelease>", self._calcular_giros_previstos)
+        self.widgets["qtde_cores"].bind("<<ComboboxSelected>>", self._calcular_giros_previstos)
+
+        if "acabamento" in self.fields_config:
+            acab_config = self.fields_config["acabamento"]
+            tb.Label(form_frame, text=self.get_string(acab_config["label_key"]) + ":").grid(row=0, column=4, padx=5, pady=5, sticky=NW)
+            acab_widget = tb.Text(form_frame, height=8, width=40)
+            acab_widget.grid(row=0, column=5, rowspan=6, padx=5, pady=5, sticky="nsew")
+            self.widgets["acabamento"] = acab_widget
         
         form_frame.grid_columnconfigure(1, weight=1)
+        form_frame.grid_columnconfigure(3, weight=1)
+        form_frame.grid_columnconfigure(5, weight=2)
 
         btn_frame = tb.Frame(form_frame)
-        btn_frame.grid(row=row, column=0, columnspan=2, pady=10)
+        btn_frame.grid(row=len(fields_left), column=0, columnspan=6, pady=10)
         tb.Button(btn_frame, text=self.get_string('save_changes_btn'), command=self.save_changes, bootstyle=SUCCESS).pack(side=LEFT, padx=5)
         tb.Button(btn_frame, text=self.get_string('cancel_btn'), command=self.destroy, bootstyle=SECONDARY).pack(side=LEFT, padx=5)
+
+    def _calcular_giros_previstos(self, event=None):
+        try:
+            tiragem_str = self.widgets["tiragem_em_folhas"].get()
+            cores_desc = self.widgets["qtde_cores"].get()
+            if not tiragem_str or not cores_desc: return
+            tiragem_folhas = int(tiragem_str)
+            multiplicador = self.giros_map.get(cores_desc, 1)
+            giros_calculado = tiragem_folhas * multiplicador
+            giros_widget = self.widgets["giros_previstos"]
+            giros_widget.config(state=NORMAL)
+            giros_widget.delete(0, END)
+            giros_widget.insert(0, str(giros_calculado))
+            giros_widget.config(state=DISABLED)
+        except (ValueError, IndexError): pass
+        except Exception as e: print(f"Erro ao calcular giros (edição): {e}")
 
     def load_ordem_data(self):
         conn = self.get_db_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
-                cols = ", ".join([f'"{key}"' for key in self.fields_config.keys()])
-                cur.execute(f"SELECT {cols} FROM ordem_producao WHERE id = %s", (self.ordem_id,))
+                cols_to_fetch = [f'"{key}"' for key in self.fields_config.keys()]
+                cur.execute(f"SELECT {', '.join(cols_to_fetch)} FROM ordem_producao WHERE id = %s", (self.ordem_id,))
                 data = cur.fetchone()
+                
                 if data:
                     data_dict = dict(zip(self.fields_config.keys(), data))
                     self.title(self.get_string('edit_order_title', wo=data_dict.get('numero_wo', '')))
+                    
                     for key, widget in self.widgets.items():
                         value = data_dict.get(key)
                         if value is not None:
                             if isinstance(widget, tb.Combobox):
+                                if key in self.master.widgets:
+                                     widget['values'] = self.master.widgets[key]['values']
                                 widget.set(str(value))
                             elif isinstance(widget, DateEntry):
                                 widget.entry.delete(0, END)
-                                widget.entry.insert(0, value.strftime('%d/%m/%Y'))
-                            else:
+                                if isinstance(value, date): widget.entry.insert(0, value.strftime('%d/%m/%Y'))
+                                else: widget.entry.insert(0, str(value))
+                            elif isinstance(widget, tb.Text):
+                                widget.delete('1.0', END)
+                                widget.insert('1.0', str(value))
+                            else: # Entry
                                 widget.delete(0, END)
                                 widget.insert(0, str(value))
+                    # Desabilita o campo de giros após o carregamento dos dados
+                    self.widgets['giros_previstos'].config(state=DISABLED)
         except Exception as e:
             messagebox.showerror("Erro ao Carregar", f"Falha ao carregar dados da ordem: {e}", parent=self)
         finally:
@@ -794,36 +1058,43 @@ class EditOrdemWindow(Toplevel):
             
     def save_changes(self):
         data = {}
+        self.widgets["giros_previstos"].config(state=NORMAL)
         for key, widget in self.widgets.items():
             if isinstance(widget, DateEntry):
                 date_val = widget.entry.get()
                 data[key] = datetime.strptime(date_val, '%d/%m/%Y').date() if date_val else None
+            elif isinstance(widget, tb.Text):
+                data[key] = widget.get("1.0", "end-1c").strip()
             else:
                 data[key] = widget.get().strip()
-                
+        self.widgets["giros_previstos"].config(state=DISABLED)
+
         if not data["numero_wo"]:
-            messagebox.showwarning(self.get_string("required_field_warning", field_name=self.get_string('col_wo')), parent=self)
+            messagebox.showwarning(self.get_string("required_field_warning", field_name=self.get_string("col_wo")), parent=self)
             return
 
         conn = self.get_db_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
-                update_data = {k: v for k, v in data.items() if v is not None and v != ''}
+                update_data = {k: v if v != '' else None for k, v in data.items()}
                 set_clauses = [f'"{col}" = %s' for col in update_data.keys()]
                 values = list(update_data.values()) + [self.ordem_id]
                 query = f"UPDATE ordem_producao SET {', '.join(set_clauses)} WHERE id = %s"
                 cur.execute(query, values)
             conn.commit()
             messagebox.showinfo("Sucesso", self.get_string('update_order_success'), parent=self)
-            self.refresh_callback()
+            # Chama a função de recarregar dados da janela principal
+            if self.refresh_callback: self.refresh_callback()
             self.destroy()
         except Exception as e:
             if conn: conn.rollback()
             messagebox.showerror("Erro ao Salvar", self.get_string('update_order_failed', error=e), parent=self)
         finally:
-            if conn: conn.close()
-            
+            if conn: conn.close()         
+# ===============================================
+#  INÍCIO DO CÓDIGO CLASSE PCPWindow
+# ===============================================
 class PCPWindow(Toplevel):
     def __init__(self, master, db_config):
         super().__init__(master)
@@ -834,28 +1105,24 @@ class PCPWindow(Toplevel):
         self.grab_set()
         
         self.fields_config = {
-            "numero_wo": {"label_key": "col_wo", "widget": "Entry"},
-            "pn": {"label_key": "col_pn", "widget": "Entry"},
-            "cliente": {"label_key": "col_cliente", "widget": "Entry"},
-            "data_previsao_entrega": {"label_key": "col_data_previsao", "widget": "DateEntry"},
-            "tiragem_para_impressao": {"label_key": "col_tiragem_para_impressao", "widget": "Entry", "trace_var": True}, 
-            "equipamento": {"label_key": "equipment_label", "widget": "Combobox", "lookup": "equipamentos_tipos"},
-            "qtde_cores": {"label_key": "col_qtde_cores", "widget": "Combobox", "lookup": "qtde_cores_tipos", "trace_var": True},
-            "tipo_papel": {"label_key": "col_tipo_papel", "widget": "Combobox", "lookup": "tipos_papel"},
-            "gramatura": {"label_key": "col_gramatura", "widget": "Combobox", "lookup": "gramaturas_tipos"},
-            "formato": {"label_key": "col_formato", "widget": "Combobox", "lookup": "formatos_tipos"},
-            "fsc": {"label_key": "col_fsc", "widget": "Combobox", "lookup": "fsc_tipos"},
+            "numero_wo": {"label_key": "col_wo", "widget": "Entry"}, "pn_partnumber": {"label_key": "PN (Partnumber)", "widget": "Entry"},
+            "cliente": {"label_key": "col_cliente", "widget": "Entry"}, "data_previsao_entrega": {"label_key": "col_data_previsao", "widget": "DateEntry"},
+            "tiragem_em_folhas": {"label_key": "col_tiragem_em_folhas", "widget": "Entry"}, "giros_previstos": {"label_key": "Giros Total Previstos", "widget": "Entry"},
+            "equipamento": {"label_key": "equipment_label", "widget": "Combobox", "lookup": "equipamentos_tipos"}, "qtde_cores": {"label_key": "col_qtde_cores", "widget": "Combobox", "lookup": "qtde_cores_tipos"},
+            "tipo_papel": {"label_key": "col_tipo_papel", "widget": "Combobox", "lookup": "tipos_papel"}, "gramatura": {"label_key": "col_gramatura", "widget": "Combobox", "lookup": "gramaturas_tipos"},
+            "formato": {"label_key": "col_formato", "widget": "Combobox", "lookup": "formatos_tipos"}, "fsc": {"label_key": "col_fsc", "widget": "Combobox", "lookup": "fsc_tipos"},
+            "acabamento": {"label_key": "Acabamento", "widget": "Text"},
         }
         self.widgets = {}
-        self.acabamento_data = {}
+        self.giros_map = {}
         
         self.create_widgets()
-        self.load_combobox_data()
+        self.load_all_combobox_data()
         self.load_ordens()
-        self.calculate_giros() # Calcular na inicialização
 
     def get_string(self, key, **kwargs):
-        return self.master.get_string(key, **kwargs)
+        lang_dict = LANGUAGES.get(self.master.current_language, LANGUAGES['portugues'])
+        return lang_dict.get(key, key).format(**kwargs)
 
     def get_db_connection(self):
         return self.master.get_db_connection()
@@ -863,57 +1130,44 @@ class PCPWindow(Toplevel):
     def create_widgets(self):
         main_frame = tb.Frame(self, padding=15)
         main_frame.pack(fill=BOTH, expand=True)
-
         form_frame = tb.LabelFrame(main_frame, text=self.get_string('new_order_section'), bootstyle=PRIMARY, padding=10)
         form_frame.pack(fill=X, pady=(0, 10), anchor=N)
-
-        # Dividir os campos em 3 colunas para melhor layout
-        all_fields = list(self.fields_config.items())
         
-        # Coluna 1 e 2: campos de entrada
-        fields_per_col = (len(all_fields) + 1) // 2
-        for i, (key, config) in enumerate(all_fields):
-            col = 0 if i < fields_per_col else 2
-            row = i if i < fields_per_col else i - fields_per_col
+        fields_left = ["numero_wo", "pn_partnumber", "cliente", "data_previsao_entrega", "tiragem_em_folhas", "equipamento"]
+        fields_middle = ["giros_previstos", "qtde_cores", "tipo_papel", "gramatura", "formato", "fsc"]
+        
+        for i, key in enumerate(fields_left):
+            config = self.fields_config[key]
+            tb.Label(form_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky=W)
+            widget = self.create_widget_from_config(form_frame, config)
+            widget.grid(row=i, column=1, padx=5, pady=5, sticky=EW)
+            self.widgets[key] = widget
 
-            tb.Label(form_frame, text=self.get_string(config["label_key"]) + ":").grid(row=row, column=col, padx=5, pady=5, sticky=W)
-            
-            # Adiciona rastreamento de variável para campos que afetam o cálculo de giros
-            if config.get("trace_var"):
-                var = tb.StringVar()
-                var.trace_add("write", self.calculate_giros)
-            
-            if config["widget"] == "Combobox":
-                widget = tb.Combobox(form_frame, state="readonly", textvariable=var if config.get("trace_var") else None)
-            elif config["widget"] == "DateEntry":
-                widget = DateEntry(form_frame, dateformat='%d/%m/%Y')
-            else: # Entry
-                widget = tb.Entry(form_frame, textvariable=var if config.get("trace_var") else None)
-            
-            widget.grid(row=row, column=col + 1, padx=5, pady=5, sticky=EW)
+        for i, key in enumerate(fields_middle):
+            config = self.fields_config[key]
+            tb.Label(form_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=2, padx=5, pady=5, sticky=W)
+            widget = self.create_widget_from_config(form_frame, config)
+            widget.grid(row=i, column=3, padx=5, pady=5, sticky=EW)
             self.widgets[key] = widget
         
-        # Coluna 3: Acabamentos
-        acab_frame = tb.LabelFrame(form_frame, text=self.get_string('col_acabamento'), padding=5)
-        acab_frame.grid(row=0, column=4, rowspan=fields_per_col, sticky='ns', padx=(20, 5))
-        self.acabamento_listbox = Listbox(acab_frame, selectmode='multiple', exportselection=False, height=8)
-        self.acabamento_listbox.pack(fill=BOTH, expand=YES)
+        self.widgets["giros_previstos"].config(state=DISABLED)
+        self.widgets["tiragem_em_folhas"].bind("<KeyRelease>", self._calcular_giros_previstos)
+        self.widgets["qtde_cores"].bind("<<ComboboxSelected>>", self._calcular_giros_previstos)
         
-        # Coluna de cálculo de Giros
-        giros_frame = tb.Frame(form_frame)
-        giros_frame.grid(row=fields_per_col, column=0, columnspan=2, pady=10)
-        tb.Label(giros_frame, text=self.get_string('col_giros_previsto') + ":").pack(side=LEFT, padx=5)
-        self.giros_previsto_label = tb.Label(giros_frame, text="0", font=("Helvetica", 10, "bold"))
-        self.giros_previsto_label.pack(side=LEFT)
-
+        acab_config = self.fields_config["acabamento"]
+        tb.Label(form_frame, text=self.get_string(acab_config["label_key"]) + ":").grid(row=0, column=4, padx=5, pady=5, sticky=NW)
+        acab_widget = tb.Text(form_frame, height=8, width=40)
+        acab_widget.grid(row=0, column=5, rowspan=6, padx=5, pady=5, sticky="nsew")
+        self.widgets["acabamento"] = acab_widget
+        
         form_frame.grid_columnconfigure(1, weight=1)
         form_frame.grid_columnconfigure(3, weight=1)
-        form_frame.grid_columnconfigure(4, weight=1) # Peso para a coluna de acabamentos
+        form_frame.grid_columnconfigure(5, weight=2)
 
-        btn_frame = tb.Frame(form_frame)
-        btn_frame.grid(row=fields_per_col + 1, column=0, columnspan=5, pady=10)
-        tb.Button(btn_frame, text=self.get_string('save_btn'), command=self.save_new_ordem, bootstyle=SUCCESS).pack(side=LEFT, padx=5)
-        tb.Button(btn_frame, text=self.get_string('clear_filters_btn'), command=self.clear_fields, bootstyle=SECONDARY).pack(side=LEFT, padx=5)
+        btn_frame_form = tb.Frame(form_frame)
+        btn_frame_form.grid(row=len(fields_left), column=0, columnspan=6, pady=10)
+        tb.Button(btn_frame_form, text=self.get_string('save_btn'), command=self.save_new_ordem, bootstyle=SUCCESS).pack(side=LEFT, padx=5)
+        tb.Button(btn_frame_form, text=self.get_string('clear_filters_btn'), command=self.clear_fields, bootstyle=SECONDARY).pack(side=LEFT, padx=5)
 
         action_frame = tb.Frame(main_frame)
         action_frame.pack(fill=X, pady=5)
@@ -923,14 +1177,16 @@ class PCPWindow(Toplevel):
         self.cancel_button.pack(side=LEFT, padx=5)
         self.services_button = tb.Button(action_frame, text=self.get_string('btn_manage_services'), command=self.open_service_manager, bootstyle="primary-outline", state=DISABLED)
         self.services_button.pack(side=LEFT, padx=5)
+        self.export_button = tb.Button(action_frame, text="Exportar para XLSX", command=self.export_to_xlsx, bootstyle="success-outline")
+        self.export_button.pack(side=LEFT, padx=5)
         
         tree_frame = tb.LabelFrame(main_frame, text=self.get_string('created_orders_section'), bootstyle=INFO, padding=10)
         tree_frame.pack(fill=BOTH, expand=True)
         
         cols = ("id", "wo", "pn", "cliente", "equipamento", "data_previsao", "status")
-        headers = (self.get_string('col_id'), self.get_string('col_wo'), self.get_string('col_pn'), self.get_string('col_cliente'), self.get_string('equipment_label'), self.get_string('col_data_previsao'), self.get_string('col_status'))
+        self.headers_treeview = (self.get_string('col_id'), self.get_string('col_wo'), "PN (Partnumber)", self.get_string('col_cliente'), self.get_string('equipment_label'), self.get_string('col_data_previsao'), self.get_string('col_status'))
         self.tree = tb.Treeview(tree_frame, columns=cols, show="headings", bootstyle=PRIMARY)
-        for col, header in zip(cols, headers):
+        for col, header in zip(cols, self.headers_treeview):
             self.tree.heading(col, text=header)
             self.tree.column(col, width=120, anchor=W)
         self.tree.column("id", width=50, anchor=CENTER)
@@ -939,36 +1195,30 @@ class PCPWindow(Toplevel):
         scrollbar = tb.Scrollbar(tree_frame, orient=VERTICAL, command=self.tree.yview)
         scrollbar.pack(side=RIGHT, fill=Y)
         self.tree.configure(yscrollcommand=scrollbar.set)
-        
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
-
-    def calculate_giros(self, *args):
+    
+    def _calcular_giros_previstos(self, event=None):
         try:
-            tiragem_str = self.widgets['tiragem_para_impressao'].get()
-            qtde_cores = self.widgets['qtde_cores'].get()
-            
-            tiragem = int(tiragem_str) if tiragem_str.isdigit() else 0
-            
-            giros_multiplicador = 0
-            if qtde_cores:
-                conn = self.get_db_connection()
-                if not conn: return
-                try:
-                    with conn.cursor() as cur:
-                        cur.execute("SELECT giros FROM qtde_cores_tipos WHERE descricao = %s", (qtde_cores,))
-                        result = cur.fetchone()
-                        if result:
-                            giros_multiplicador = result[0]
-                except psycopg2.Error as e:
-                    print(f"Erro ao buscar giros: {e}") # Log para debug
-                finally:
-                    if conn: conn.close()
+            tiragem_str = self.widgets["tiragem_em_folhas"].get()
+            cores_desc = self.widgets["qtde_cores"].get()
+            if not tiragem_str or not cores_desc: return
 
-            total_giros = tiragem * giros_multiplicador
-            self.giros_previsto_label.config(text=str(total_giros))
-        except Exception as e:
-            self.giros_previsto_label.config(text="Erro")
-            print(f"Erro no cálculo de giros: {e}") # Log para debug
+            tiragem_folhas = int(tiragem_str)
+            multiplicador = self.giros_map.get(cores_desc, 1)
+            giros_calculado = tiragem_folhas * multiplicador
+
+            giros_widget = self.widgets["giros_previstos"]
+            giros_widget.config(state=NORMAL)
+            giros_widget.delete(0, END)
+            giros_widget.insert(0, str(giros_calculado))
+            giros_widget.config(state=DISABLED)
+        except (ValueError, IndexError): pass
+        except Exception as e: print(f"Erro ao calcular giros: {e}")
+
+    def create_widget_from_config(self, parent, config):
+        if config["widget"] == "Combobox": return tb.Combobox(parent, state="readonly")
+        elif config["widget"] == "DateEntry": return DateEntry(parent, dateformat='%d/%m/%Y')
+        else: return tb.Entry(parent)
 
     def on_tree_select(self, event=None):
         selected_item = self.tree.focus()
@@ -981,7 +1231,6 @@ class PCPWindow(Toplevel):
         self.services_button.config(state=NORMAL)
         item_values = self.tree.item(selected_item, 'values')
         status = item_values[-1] if item_values else ""
-
         if status == 'Em Aberto':
             self.edit_button.config(state=NORMAL)
             self.cancel_button.config(state=NORMAL)
@@ -992,11 +1241,8 @@ class PCPWindow(Toplevel):
     def open_service_manager(self):
         selected_item = self.tree.focus()
         if not selected_item: return
-        
         item_values = self.tree.item(selected_item, 'values')
-        ordem_id = item_values[0]
-        wo_number = item_values[1]
-        
+        ordem_id, wo_number = item_values[0], item_values[1]
         ServiceManagerWindow(self, self.db_config, ordem_id, wo_number, refresh_callback=self.load_ordens)
 
     def open_edit_window(self):
@@ -1006,7 +1252,7 @@ class PCPWindow(Toplevel):
             return
         item_values = self.tree.item(selected_item, 'values')
         ordem_id = item_values[0]
-        EditOrdemWindow(self, self.db_config, ordem_id, self.load_ordens)
+        EditOrdemWindow(self, self.db_config, ordem_id, self.load_all_combobox_data)
 
     def cancel_ordem(self):
         selected_item = self.tree.focus()
@@ -1021,9 +1267,6 @@ class PCPWindow(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
-                # Exclui primeiro as associações de acabamento
-                cur.execute("DELETE FROM ordem_producao_acabamentos WHERE ordem_id = %s", (ordem_id,))
-                # Depois exclui a ordem
                 cur.execute("DELETE FROM ordem_producao WHERE id = %s", (ordem_id,))
             conn.commit()
             messagebox.showinfo("Sucesso", self.get_string('cancel_order_success'), parent=self)
@@ -1038,31 +1281,31 @@ class PCPWindow(Toplevel):
         self.edit_button.config(state=DISABLED)
         self.cancel_button.config(state=DISABLED)
         self.services_button.config(state=DISABLED)
-        
-        for i in self.tree.get_children():
-            self.tree.delete(i)
-        
+        for i in self.tree.get_children(): self.tree.delete(i)
         conn = self.get_db_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT id, numero_wo, pn, cliente, equipamento, data_previsao_entrega, status FROM ordem_producao ORDER BY data_cadastro_pcp DESC")
+                cur.execute("SELECT id, numero_wo, pn_partnumber, cliente, equipamento, data_previsao_entrega, status FROM ordem_producao ORDER BY data_cadastro_pcp DESC")
                 for row in cur.fetchall():
                     row_list = list(row)
-                    if row_list[5]: # Índice da data
-                        row_list[5] = row_list[5].strftime('%d/%m/%Y')
+                    if row_list[5] and isinstance(row_list[5], date): row_list[5] = row_list[5].strftime('%d/%m/%Y')
                     self.tree.insert("", END, values=tuple(row_list))
         except psycopg2.Error as e:
             messagebox.showerror("Erro ao Carregar", f"Falha ao carregar ordens de produção: {e}", parent=self)
         finally:
             if conn: conn.close()
 
-    def load_combobox_data(self):
+    # ATUALIZADO: Lógica de carregamento dos comboboxes corrigida
+    def load_all_combobox_data(self):
+        self.load_ordens()
         conn = self.get_db_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
-                # Carregar dados para Comboboxes padrão
+                cur.execute('SELECT descricao, giros FROM qtde_cores_tipos')
+                self.giros_map = {desc: giros if giros is not None else 1 for desc, giros in cur.fetchall()}
+                
                 schemas = LookupTableManagerWindow.lookup_table_schemas
                 for key, widget in self.widgets.items():
                     if isinstance(widget, tb.Combobox):
@@ -1070,85 +1313,60 @@ class PCPWindow(Toplevel):
                         lookup_ref = field_config.get("lookup")
                         if lookup_ref and lookup_ref in schemas:
                             schema_info = schemas[lookup_ref]
-                            # Acha a coluna de descrição (não a PK)
-                            display_col_info = next((v for k, v in schema_info['columns'].items() if k != schema_info['pk_column']), None)
-                            if display_col_info:
-                                db_col = display_col_info['db_column']
+                            
+                            # LÓGICA CORRIGIDA: Encontra a coluna de descrição dinamicamente
+                            descriptive_col_key = None
+                            if 'descricao' in schema_info['columns']: descriptive_col_key = 'descricao'
+                            elif 'nome' in schema_info['columns']: descriptive_col_key = 'nome'
+                            else: # Fallback para o primeiro campo que não seja a PK
+                                pk_db_col = schema_info['columns'][schema_info['pk_column']]['db_column']
+                                for col_key, col_data in schema_info['columns'].items():
+                                    if col_data['db_column'] != pk_db_col:
+                                        descriptive_col_key = col_key
+                                        break
+                            
+                            if descriptive_col_key:
+                                db_col = schema_info['columns'][descriptive_col_key]['db_column']
                                 cur.execute(f'SELECT DISTINCT "{db_col}" FROM {schema_info["table"]} ORDER BY "{db_col}"')
                                 values = [str(row[0]) for row in cur.fetchall()]
                                 widget['values'] = values
-                
-                # Carregar dados para a Listbox de Acabamentos
-                cur.execute("SELECT id, descricao FROM acabamentos_tipos ORDER BY descricao")
-                self.acabamento_listbox.delete(0, END)
-                self.acabamento_data = {}
-                for acab_id, desc in cur.fetchall():
-                    self.acabamento_listbox.insert(END, desc)
-                    self.acabamento_data[desc] = acab_id
 
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao carregar dados para os comboboxes: {e}", parent=self)
         finally:
             if conn: conn.close()
-            
+
     def save_new_ordem(self):
         data = {}
+        self.widgets["giros_previstos"].config(state=NORMAL)
         for key, widget in self.widgets.items():
-            if isinstance(widget, DateEntry):
-                data[key] = widget.entry.get() or None
-            elif isinstance(widget, tb.Combobox):
-                 data[key] = widget.get()
-            else: # Entry
-                data[key] = widget.get().strip()
-                
+            if isinstance(widget, DateEntry): data[key] = widget.entry.get() or None
+            elif isinstance(widget, tb.Text): data[key] = widget.get("1.0", "end-1c").strip()
+            else: data[key] = widget.get().strip()
+        self.widgets["giros_previstos"].config(state=DISABLED)
+
         if not data["numero_wo"]:
             messagebox.showwarning(self.get_string("required_field_warning", field_name=self.get_string("col_wo")), parent=self)
             return
-        
-        selected_acab_indices = self.acabamento_listbox.curselection()
-        selected_acab_ids = [self.acabamento_data[self.acabamento_listbox.get(i)] for i in selected_acab_indices]
-
+            
         conn = self.get_db_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
                 cols_to_save = list(self.fields_config.keys())
                 non_empty_data = {col: data[col] for col in cols_to_save if data[col]}
-                
                 if 'data_previsao_entrega' in non_empty_data:
                     non_empty_data['data_previsao_entrega'] = datetime.strptime(non_empty_data['data_previsao_entrega'], '%d/%m/%Y').date()
-                
-                if 'tiragem_para_impressao' in non_empty_data and not non_empty_data['tiragem_para_impressao'].isdigit():
-                    messagebox.showerror("Entrada Inválida", "O campo 'Tiragem para Impressão' deve ser um número.", parent=self)
-                    return
-
                 cols = non_empty_data.keys()
-                query = f"""
-                    INSERT INTO ordem_producao ({', '.join(f'"{c}"' for c in cols)}, status)
-                    VALUES ({', '.join([f'%({c})s' for c in cols])}, 'Em Aberto')
-                    RETURNING id
-                """
+                query = f""" INSERT INTO ordem_producao ({', '.join(f'"{c}"' for c in cols)}, status) VALUES ({', '.join([f'%({c})s' for c in cols])}, 'Em Aberto') """
                 cur.execute(query, non_empty_data)
-                new_ordem_id = cur.fetchone()[0]
-
-                # Salvar acabamentos selecionados
-                if new_ordem_id and selected_acab_ids:
-                    acab_values = [(new_ordem_id, acab_id) for acab_id in selected_acab_ids]
-                    acab_query = "INSERT INTO ordem_producao_acabamentos (ordem_id, acabamento_id) VALUES (%s, %s)"
-                    cur.executemany(acab_query, acab_values)
-
             conn.commit()
             messagebox.showinfo("Sucesso", self.get_string('order_save_success'), parent=self)
             self.clear_fields()
             self.load_ordens()
-            if 'production' in self.master.open_windows and self.master.open_windows['production'].winfo_exists():
-                self.master.open_windows['production'].load_open_wos()
-        except psycopg2.IntegrityError as e:
+        except psycopg2.IntegrityError:
             conn.rollback()
-            if 'numero_wo' in str(e):
-                messagebox.showerror("Erro de Integridade", self.get_string('integrity_error_wo', wo=data['numero_wo']), parent=self)
-            else:
-                 messagebox.showerror("Erro de Integridade", f"Erro de banco de dados: {e}", parent=self)
+            messagebox.showerror("Erro de Integridade", self.get_string('integrity_error_wo', wo=data['numero_wo']), parent=self)
         except (psycopg2.Error, ValueError) as e:
             conn.rollback()
             messagebox.showerror("Erro ao Salvar", self.get_string('save_order_error', error=e), parent=self)
@@ -1156,16 +1374,52 @@ class PCPWindow(Toplevel):
             if conn: conn.close()
 
     def clear_fields(self):
-        for widget in self.widgets.values():
-            if isinstance(widget, tb.Combobox):
-                widget.set('')
-            elif isinstance(widget, DateEntry):
-                widget.entry.delete(0, END)
-            else: # Entry
-                widget.delete(0, END)
-        self.acabamento_listbox.selection_clear(0, END)
-        self.giros_previsto_label.config(text="0")
-                
+        self.widgets["giros_previstos"].config(state=NORMAL)
+        for key, widget in self.widgets.items():
+            if isinstance(widget, tb.Combobox): widget.set('')
+            elif isinstance(widget, DateEntry): widget.entry.delete(0, END)
+            elif isinstance(widget, tb.Text): widget.delete("1.0", END)
+            else: widget.delete(0, END)
+        self.widgets["giros_previstos"].config(state=DISABLED)
+
+    def export_to_xlsx(self):
+        selected_items = self.tree.selection()
+        if not selected_items:
+            messagebox.showwarning("Nenhuma Seleção", "Por favor, selecione uma ou mais ordens na lista para exportar.", parent=self)
+            return
+        filepath = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Planilhas Excel", "*.xlsx"), ("Todos os Arquivos", "*.*")], title="Salvar Relatório de Ordens como XLSX")
+        if not filepath: return
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+            sheet.title = "Ordens de Produção"
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM ordem_producao LIMIT 0")
+                headers = [desc[0] for desc in cur.description]
+                sheet.append(headers)
+                ordem_ids_to_export = [self.tree.item(item, "values")[0] for item in selected_items]
+                placeholders = ','.join(['%s'] * len(ordem_ids_to_export))
+                query = f"SELECT * FROM ordem_producao WHERE id IN ({placeholders})"
+                cur.execute(query, ordem_ids_to_export)
+                for record in cur.fetchall():
+                    processed_record = []
+                    for cell_value in record:
+                        if isinstance(cell_value, (date, datetime)): processed_record.append(cell_value.strftime('%d/%m/%Y'))
+                        else: processed_record.append(cell_value)
+                    sheet.append(processed_record)
+            workbook.save(filepath)
+            messagebox.showinfo("Sucesso", f"Relatório XLSX exportado com sucesso para:\n{filepath}", parent=self)
+        except (psycopg2.Error, IOError, Exception) as e:
+            messagebox.showerror("Erro na Exportação", f"Ocorreu um erro ao exportar a planilha:\n{e}", parent=self)
+        finally:
+            if conn: conn.close()
+
+# ===============================================
+#  Tela Apontamentos
+# ===============================================
+
 class ViewAppointmentsWindow(Toplevel):
     def __init__(self, master, db_config):
         super().__init__(master)
@@ -1383,6 +1637,7 @@ class ViewAppointmentsWindow(Toplevel):
 # ==============================================================================
 # 5. CLASSE PRINCIPAL DE APONTAMENTO
 # ==============================================================================
+
 class App(Toplevel):
     def __init__(self, master, db_config):
         super().__init__(master)
@@ -1393,24 +1648,18 @@ class App(Toplevel):
         self.set_localized_title()
         self.geometry("1200x850")
 
-        # Máquina de estados para controlar o fluxo
-        self.current_state = 'IDLE'  # IDLE, SETUP_RUNNING, PRODUCTION_READY, PRODUCTION_RUNNING, FINISHED
-        
-        # Timers e Dados
+        self.current_state = 'IDLE'
         self.setup_start_time, self.setup_end_time = None, None
         self.prod_start_time, self.prod_end_time = None, None
-        
         self.setup_timer_job, self.prod_timer_job = None, None
-        
-        # Lista unificada para paradas
         self.all_stops_data = []
-
-        # IDs e Dados
         self.selected_ordem_id, self.selected_servico_id, self.setup_id = None, None, None
         self.open_wos_data, self.pending_services_data = {}, {}
         self.motivos_perda_data = {}
         
-        # Dicionários de Widgets
+        # NOVO: Dicionário para guardar os multiplicadores de giros
+        self.giros_map = {}
+
         self.initial_fields, self.setup_fields, self.production_fields, self.info_labels = {}, {}, {}, {}
         
         self.create_widgets()
@@ -1419,7 +1668,6 @@ class App(Toplevel):
 
     def get_string(self, key, **kwargs):
         lang_dict = LANGUAGES.get(self.master.current_language, LANGUAGES.get('portugues', {}))
-        # Adiciona um valor padrão para evitar erros se a chave não existir
         default_text = key.replace('_', ' ').capitalize()
         return lang_dict.get(key, default_text).format(**kwargs)
 
@@ -1431,13 +1679,11 @@ class App(Toplevel):
         main_frame.pack(fill=BOTH, expand=YES)
         main_frame.grid_columnconfigure(0, weight=1)
 
-        # --- Frame Superior (Seleção e Informações) ---
         top_frame = tb.Frame(main_frame)
         top_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=5)
         top_frame.grid_columnconfigure(0, weight=1)
         top_frame.grid_columnconfigure(1, weight=1)
 
-        # --- 1. SELEÇÃO INICIAL ---
         selection_frame = tb.LabelFrame(top_frame, text=self.get_string('initial_selection_section'), bootstyle=PRIMARY, padding=15)
         selection_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         selection_frame.grid_columnconfigure(1, weight=1)
@@ -1462,17 +1708,23 @@ class App(Toplevel):
         self.turno_combobox.grid(row=3, column=1, sticky=EW, padx=5, pady=2)
         self.initial_fields['turno'] = self.turno_combobox
         
-        # --- PAINEL DE INFORMAÇÕES DA WO ---
         self.wo_info_frame = tb.LabelFrame(top_frame, text="Informações da Ordem", bootstyle=PRIMARY, padding=15)
         self.wo_info_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
-        info_keys = {'col_cliente': 'Cliente', 'equipment_label': 'Equipamento', 'col_tipo_papel': 'Tipo Papel', 'col_tiragem_para_impressao': 'Tiragem Meta'}
+        
+        # ATUALIZADO: Adicionados os campos 'qtde_cores' e 'giros_previstos'
+        info_keys = {
+            'col_cliente': 'Cliente', 'equipment_label': 'Equipamento', 
+            'col_tipo_papel': 'Tipo Papel', 'col_tiragem_em_folhas': 'Tiragem Meta',
+            'col_qtde_cores': 'QTDE Cores', 'giros_previstos': 'Giros Previstos'
+        }
         for i, (key, text) in enumerate(info_keys.items()):
-            tb.Label(self.wo_info_frame, text=f"{text}:", font="-weight bold").grid(row=i, column=0, sticky=W, padx=5, pady=2)
+            # Usando uma chave de tradução se existir, senão o texto padrão
+            display_text = self.get_string(key) if self.get_string(key) != key else text
+            tb.Label(self.wo_info_frame, text=f"{display_text}:", font="-weight bold").grid(row=i, column=0, sticky=W, padx=5, pady=2)
             label_widget = tb.Label(self.wo_info_frame, text="-")
             label_widget.grid(row=i, column=1, sticky=W, padx=5, pady=2)
             self.info_labels[key] = label_widget
 
-        # --- 2. APONTAMENTO DE SETUP E PRODUÇÃO ---
         process_frame = tb.Frame(main_frame)
         process_frame.grid(row=1, column=0, columnspan=2, sticky='nsew', pady=5)
         process_frame.grid_columnconfigure(0, weight=1)
@@ -1513,7 +1765,10 @@ class App(Toplevel):
             entry.pack(fill=X)
             self.production_fields[key] = entry
 
-        # NOVO CAMPO: Motivo da Perda
+        # ATUALIZADO: Adiciona o gatilho de cálculo e desabilita o campo de giros
+        self.production_fields['quantidadeproduzida'].bind("<KeyRelease>", self._calcular_giros_rodados)
+        self.production_fields['giros_rodados'].config(state=DISABLED)
+
         tb.Label(prod_entries_frame, text=self.get_string("col_motivo_perda") + ":").pack(fill=X, pady=2)
         self.motivo_perda_combobox = tb.Combobox(prod_entries_frame, state="readonly")
         self.motivo_perda_combobox.pack(fill=X)
@@ -1528,7 +1783,6 @@ class App(Toplevel):
         self.prod_stop_button = tb.Button(prod_control_frame, text=self.get_string('point_prod_stop_btn'), command=lambda: self.open_stop_window('production'), state=DISABLED, width=20)
         self.prod_stop_button.pack(pady=5, ipady=5)
 
-        # --- 4. LISTA DE PARADAS UNIFICADA ---
         stops_frame = tb.LabelFrame(main_frame, text="Histórico de Paradas", padding=10)
         stops_frame.grid(row=2, column=0, columnspan=2, sticky='nsew', pady=5)
         
@@ -1540,7 +1794,6 @@ class App(Toplevel):
         self.stops_tree.heading('duracao', text="Duração"); self.stops_tree.column('duracao', width=100, anchor=CENTER)
         self.stops_tree.pack(fill=BOTH, expand=YES)
         
-        # --- 5. Botão final e Status ---
         self.final_register_button = tb.Button(main_frame, text=self.get_string("register_entry_btn"), command=self.submit_final_production, state=DISABLED)
         self.final_register_button.grid(row=3, column=0, columnspan=2, pady=20, ipady=10)
 
@@ -1550,15 +1803,41 @@ class App(Toplevel):
         self.status_label = tb.Label(status_bar, text=self.get_string('status_idle'), font=("Helvetica", 12, "bold"), bootstyle="secondary")
         self.status_label.pack(side=LEFT, padx=10)
 
+    # NOVO: Função para calcular os giros rodados
+    def _calcular_giros_rodados(self, event=None):
+        try:
+            qtde_produzida_str = self.production_fields['quantidadeproduzida'].get()
+            cores_desc = self.info_labels.get('col_qtde_cores', tb.Label()).cget("text") # Pega do painel de info
+
+            if not qtde_produzida_str or not cores_desc or cores_desc == '-': return
+            
+            qtde_produzida = int(qtde_produzida_str)
+            multiplicador = self.giros_map.get(cores_desc, 1) # Usa o mapa de giros
+            giros_calculado = qtde_produzida * multiplicador
+            
+            giros_widget = self.production_fields['giros_rodados']
+            giros_widget.config(state=NORMAL)
+            giros_widget.delete(0, END)
+            giros_widget.insert(0, str(giros_calculado))
+            giros_widget.config(state=DISABLED)
+            
+        except (ValueError, TclError): pass # Ignora erros de conversão
+        except Exception as e: print(f"Erro ao calcular giros rodados: {e}")
+
     def get_db_connection(self):
         return self.master.get_db_connection()
 
+    # ATUALIZADO: Carrega o mapa de giros ao iniciar
     def load_initial_data(self):
         self.load_open_wos()
         conn = self.get_db_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
+                # Carrega o mapa de giros para o cálculo
+                cur.execute('SELECT descricao, giros FROM qtde_cores_tipos')
+                self.giros_map = {desc: giros if giros is not None else 1 for desc, giros in cur.fetchall()}
+                
                 cur.execute('SELECT nome FROM impressores ORDER BY nome')
                 self.impressor_combobox['values'] = [row[0] for row in cur.fetchall()]
                 cur.execute('SELECT descricao FROM turnos_tipos ORDER BY id')
@@ -1627,6 +1906,7 @@ class App(Toplevel):
         self.update_wo_info_panel()
         self.update_ui_state()
         
+    # ATUALIZADO: Busca os novos campos do banco
     def update_wo_info_panel(self):
         for label in self.info_labels.values(): label.config(text="-")
         if not self.selected_ordem_id: return
@@ -1635,7 +1915,7 @@ class App(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
-                info_cols = ['cliente', 'equipamento', 'tipo_papel', 'tiragem_para_impressao']
+                info_cols = ['cliente', 'equipamento', 'tipo_papel', 'tiragem_em_folhas', 'qtde_cores', 'giros_previstos']
                 cur.execute(f"SELECT {', '.join(info_cols)} FROM ordem_producao WHERE id = %s", (self.selected_ordem_id,))
                 data = cur.fetchone()
                 if data:
@@ -1643,7 +1923,9 @@ class App(Toplevel):
                     self.info_labels['col_cliente'].config(text=data_dict.get('cliente', '-'))
                     self.info_labels['equipment_label'].config(text=data_dict.get('equipamento', '-'))
                     self.info_labels['col_tipo_papel'].config(text=data_dict.get('tipo_papel', '-'))
-                    self.info_labels['col_tiragem_para_impressao'].config(text=data_dict.get('tiragem_para_impressao', '-'))
+                    self.info_labels['col_tiragem_em_folhas'].config(text=data_dict.get('tiragem_em_folhas', '-'))
+                    self.info_labels['col_qtde_cores'].config(text=data_dict.get('qtde_cores', '-'))
+                    self.info_labels['giros_previstos'].config(text=data_dict.get('giros_previstos', '-'))
         except psycopg2.Error as e:
             messagebox.showerror("Erro", f"Falha ao carregar informações da WO: {e}", parent=self)
         finally:
@@ -1652,13 +1934,12 @@ class App(Toplevel):
     def update_ui_state(self):
         state = self.current_state
         all_widgets = list(self.initial_fields.values()) + list(self.setup_fields.values()) + list(self.production_fields.values())
-        for widget in all_widgets: widget.config(state=DISABLED)
-        
-        self.wo_combobox.config(state=DISABLED)
-        self.service_combobox.config(state=DISABLED)
-        for btn in [self.setup_button, self.setup_stop_button, self.prod_button, self.prod_stop_button, self.final_register_button]:
-            btn.config(state=DISABLED)
+        for widget in all_widgets:
+             # Deixa os campos de produção editáveis, exceto giros rodados
+            if widget not in [self.production_fields['giros_rodados']]:
+                widget.config(state=NORMAL if state in ['PRODUCTION_RUNNING', 'FINISHED'] else DISABLED)
 
+        # Lógica de controle de estado principal
         if state == 'IDLE':
             self.wo_combobox.config(state='readonly'); 
             if self.wo_combobox.get(): self.service_combobox.config(state='readonly')
@@ -1666,6 +1947,9 @@ class App(Toplevel):
             if self.service_combobox.get() and self.service_combobox.get() != self.get_string('no_pending_services'):
                 self.setup_button.config(state=NORMAL, text=self.get_string('start_setup_btn'))
             self.status_label.config(text=self.get_string('status_idle'), bootstyle="secondary")
+            self.setup_button.config(state=NORMAL)
+            self.prod_button.config(state=DISABLED)
+            self.final_register_button.config(state=DISABLED)
 
         elif state == 'SETUP_RUNNING':
             for w in self.setup_fields.values(): w.config(state=NORMAL)
@@ -1680,13 +1964,13 @@ class App(Toplevel):
 
         elif state == 'PRODUCTION_RUNNING':
             for w in self.setup_fields.values(): w.config(state=DISABLED)
-            for w in self.production_fields.values(): w.config(state=NORMAL)
+            self.production_fields['giros_rodados'].config(state=DISABLED)
             self.prod_button.config(state=NORMAL, text=self.get_string('finish_production_btn'))
             self.prod_stop_button.config(state=NORMAL)
             self.status_label.config(text=self.get_string('status_prod_running'), bootstyle="success")
 
         elif state == 'FINISHED':
-            for w in self.production_fields.values(): w.config(state=NORMAL)
+            self.production_fields['giros_rodados'].config(state=DISABLED)
             self.final_register_button.config(state=NORMAL)
             self.status_label.config(text=self.get_string('status_prod_done'), bootstyle="warning")
 
@@ -1732,23 +2016,14 @@ class App(Toplevel):
         if not conn: return False
         try:
             with conn.cursor() as cur:
-                query = """
-                    INSERT INTO apontamento_setup (servico_id, data_apontamento, hora_inicio, hora_fim, perdas, malas, total_lavagens, numero_inspecao)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
-                """
-                params = (
-                    self.selected_servico_id, date.today(), self.setup_start_time, datetime.now(),
-                    int(data['perdas']), int(data['malas']), int(data['total_lavagens']), data['numero_inspecao']
-                )
+                query = """ INSERT INTO apontamento_setup (servico_id, data_apontamento, hora_inicio, hora_fim, perdas, malas, total_lavagens, numero_inspecao) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id; """
+                params = (self.selected_servico_id, date.today(), self.setup_start_time, datetime.now(), int(data['perdas']), int(data['malas']), int(data['total_lavagens']), data['numero_inspecao'])
                 cur.execute(query, params)
                 self.setup_id = cur.fetchone()[0]
-
                 for stop in self.all_stops_data:
                     if stop['type'] == 'Setup':
-                        cur.execute(
-                            "INSERT INTO paradas_setup (setup_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s)",
-                            (self.setup_id, stop['motivo_id'], stop['hora_inicio_parada'], stop['hora_fim_parada'], stop.get('motivo_extra_detail'))
-                        )
+                        cur.execute("INSERT INTO paradas_setup (setup_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s)",
+                            (self.setup_id, stop['motivo_id'], stop['hora_inicio_parada'], stop['hora_fim_parada'], stop.get('motivo_extra_detail')))
             conn.commit()
             messagebox.showinfo("Sucesso", self.get_string('setup_saved_success'))
             return True
@@ -1760,15 +2035,16 @@ class App(Toplevel):
             if conn: conn.close()
 
     def submit_final_production(self):
-        # 1. Validação
+        # Habilita o campo de giros temporariamente para pegar seu valor
+        self.production_fields['giros_rodados'].config(state=NORMAL)
         prod_data = {key: widget.get().strip() for key, widget in self.production_fields.items()}
+        self.production_fields['giros_rodados'].config(state=DISABLED)
+
         if not prod_data.get('giros_rodados') or not prod_data.get('quantidadeproduzida'):
             messagebox.showerror("Validação", self.get_string('final_appointment_validation_error'), parent=self)
             return
 
-        # 2. Coleta de dados
         final_data = {}
-        # Dados da Seleção Inicial
         final_data['servico_id'] = self.selected_servico_id
         final_data['ordem_id'] = self.selected_ordem_id
         final_data['impressor'] = self.initial_fields['impressor'].get()
@@ -1778,7 +2054,6 @@ class App(Toplevel):
         conn = self.get_db_connection()
         if not conn: return
         try:
-            # Coleta dados complementares da WO
             with conn.cursor() as cur:
                 cur.execute("SELECT cliente, equipamento, qtde_cores, tipo_papel, formato, gramatura, fsc FROM ordem_producao WHERE id = %s", (self.selected_ordem_id,))
                 wo_details = cur.fetchone()
@@ -1786,40 +2061,29 @@ class App(Toplevel):
                     keys = ['cliente', 'equipamento', 'qtde_cores', 'tipo_papel', 'formato', 'gramatura', 'fsc']
                     final_data.update(dict(zip(keys, wo_details)))
 
-            # Coleta dados do formulário de Produção
             final_data['data'] = date.today()
             final_data['horainicio'] = self.prod_start_time.time() if self.prod_start_time else None
             final_data['horafim'] = self.prod_end_time.time() if self.prod_end_time else None
             final_data['giros_rodados'] = int(prod_data['giros_rodados']) if prod_data['giros_rodados'] else None
             final_data['quantidadeproduzida'] = int(prod_data['quantidadeproduzida']) if prod_data['quantidadeproduzida'] else None
             final_data['perdas_producao'] = int(prod_data['perdas_producao']) if prod_data.get('perdas_producao') else None
-            
             selected_motivo_perda = self.motivo_perda_combobox.get()
             final_data['motivo_perda_id'] = self.motivos_perda_data.get(selected_motivo_perda)
 
-            # 3. Transação no Banco de Dados
             with conn.cursor() as cur:
-                # Insere apontamento principal de produção
                 cols = [f'"{k}"' for k in final_data.keys() if final_data[k] is not None]
                 filtered_data = {k: v for k, v in final_data.items() if v is not None}
                 placeholders = [f"%({k})s" for k in filtered_data.keys()]
-                
                 query = f"INSERT INTO apontamento ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) RETURNING id"
                 cur.execute(query, filtered_data)
                 apontamento_id = cur.fetchone()[0]
 
-                # Insere paradas de produção
                 for stop in self.all_stops_data:
                     if stop['type'] == 'Produção':
-                        cur.execute(
-                            "INSERT INTO paradas (apontamento_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s)",
-                            (apontamento_id, stop['motivo_id'], stop['hora_inicio_parada'], stop['hora_fim_parada'], stop.get('motivo_extra_detail'))
-                        )
+                        cur.execute("INSERT INTO paradas (apontamento_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s)",
+                            (apontamento_id, stop['motivo_id'], stop['hora_inicio_parada'], stop['hora_fim_parada'], stop.get('motivo_extra_detail')))
                 
-                # Atualiza status do serviço
                 cur.execute("UPDATE ordem_servicos SET status = 'Concluído' WHERE id = %s", (self.selected_servico_id,))
-                
-                # Verifica se todos os serviços da ordem foram concluídos para então fechar a WO
                 cur.execute("SELECT COUNT(*) FROM ordem_servicos WHERE ordem_id = %s AND status = 'Pendente'", (self.selected_ordem_id,))
                 pending_services = cur.fetchone()[0]
                 if pending_services == 0:
@@ -1827,7 +2091,7 @@ class App(Toplevel):
 
             conn.commit()
             messagebox.showinfo("Sucesso", self.get_string('production_saved_success'), parent=self)
-            self.destroy() # Fecha a janela de apontamento
+            self.destroy()
 
         except (psycopg2.Error, ValueError, KeyError) as e:
             if conn: conn.rollback()
@@ -1862,8 +2126,7 @@ class App(Toplevel):
         self.refresh_stops_tree()
 
     def refresh_stops_tree(self):
-        for item in self.stops_tree.get_children():
-            self.stops_tree.delete(item)
+        for item in self.stops_tree.get_children(): self.stops_tree.delete(item)
         for stop in self.all_stops_data:
             start = stop['hora_inicio_parada'].strftime('%H:%M:%S')
             end = stop['hora_fim_parada'].strftime('%H:%M:%S')
@@ -1871,14 +2134,14 @@ class App(Toplevel):
             self.stops_tree.insert('', END, values=(stop['type'], stop['motivo_text'], start, end, str(duration)))
 
 # ==============================================================================
-# 6. CLASSE DE MENU PRINCIPAL
+# CLASSE DE MENU PRINCIPAL
 # ==============================================================================
 class MainMenu(tb.Window):
     
     def __init__(self):
         super().__init__(themename="flatly")
         self.db_config = {}
-        self.load_db_config()
+        self.load_db_config() # Carrega as configurações (agora decodificadas)
         self.current_language = self.db_config.get('language', 'portugues')
         self.set_localized_title()
         self.geometry("600x400")
@@ -1896,11 +2159,23 @@ class MainMenu(tb.Window):
     def set_localized_title(self):
         self.title(self.get_string('main_menu_title'))
 
+    # ATUALIZADO: Função para carregar e decodificar o arquivo de configuração
     def load_db_config(self):
-        if os.path.exists('db_config.json'):
+        config_path = 'db_config.json'
+        if os.path.exists(config_path) and os.path.getsize(config_path) > 0:
             try:
-                with open('db_config.json', 'r') as f: self.db_config = json.load(f)
-            except Exception: self.db_config = {}
+                with open(config_path, 'rb') as f: # Abrir em modo binário 'rb'
+                    encoded_data = f.read()
+                    decoded_data = base64.b64decode(encoded_data)
+                    self.db_config = json.loads(decoded_data)
+            except (json.JSONDecodeError, base64.binascii.Error, Exception) as e:
+                print(f"Erro ao ler ou decodificar o arquivo de configuração: {e}")
+                # Se houver erro (ex: arquivo corrompido ou em texto plano), cria um backup e começa com config vazia
+                if os.path.exists(config_path):
+                    os.rename(config_path, f"{config_path}.bak")
+                self.db_config = {}
+        else:
+            self.db_config = {}
 
     def get_db_connection(self):
         if not all(self.db_config.get(k) for k in ['host', 'porta', 'banco', 'usuário', 'senha']):
@@ -1927,19 +2202,15 @@ class MainMenu(tb.Window):
         self.menubar = tb.Menu(self)
         config_menu = tb.Menu(self.menubar, tearoff=0)
         config_menu.add_command(label=self.get_string('menu_db_config'), command=self.open_configure_db_window)
-        config_menu.add_command(label=self.get_string('menu_manage_lookup'), command=self.open_lookup_table_manager)
+        config_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self, self.db_config, self.refresh_main_pcp_comboboxes))
         self.menubar.add_cascade(label=self.get_string('menu_settings'), menu=config_menu)
         self.config(menu=self.menubar)
     
-    def open_lookup_table_manager(self):
-        # Callback para atualizar os comboboxes na janela PCP se estiver aberta
-        pcp_window = self.open_windows.get('pcp')
-        refresh_callback = None
-        if pcp_window and pcp_window.winfo_exists():
-            refresh_callback = pcp_window.load_combobox_data
-        
-        LookupTableManagerWindow(self, self.db_config, refresh_main_comboboxes_callback=refresh_callback)
-    
+    # Função para ser chamada como callback e atualizar a janela PCP
+    def refresh_main_pcp_comboboxes(self):
+        if 'pcp' in self.open_windows and self.open_windows['pcp'].winfo_exists():
+            self.open_windows['pcp'].load_all_combobox_data()
+
     def open_production_window(self):
         if 'production' not in self.open_windows or not self.open_windows['production'].winfo_exists():
             self.open_windows['production'] = App(master=self, db_config=self.db_config)
@@ -1971,33 +2242,50 @@ class MainMenu(tb.Window):
         win.title(self.get_string('config_win_title'))
         win.transient(self)
         win.grab_set()
+        
+        frame = tb.Frame(win, padding=10)
+        frame.pack(expand=True, fill=BOTH)
+
         labels = [("host", 'host_label'), ("porta", 'port_label'), ("usuário", 'user_label'), ("senha", 'password_label'), ("banco", 'db_label'), ("tabela", 'table_label')]
         entries = {}
         for i, (key, label_key) in enumerate(labels):
-            tb.Label(win, text=self.get_string(label_key) + ":").grid(row=i, column=0, padx=10, pady=5, sticky="w")
-            e = tb.Entry(win, show='*' if key == "senha" else '')
+            tb.Label(frame, text=self.get_string(label_key) + ":").grid(row=i, column=0, padx=10, pady=5, sticky="w")
+            e = tb.Entry(frame, show='*' if key == "senha" else '')
             e.grid(row=i, column=1, padx=10, pady=5, sticky="ew")
             e.insert(0, self.db_config.get(key, ''))
             entries[key] = e
-        tb.Label(win, text=self.get_string('language_label') + ":").grid(row=len(labels), column=0, padx=10, pady=5, sticky="w")
+        
+        tb.Label(frame, text=self.get_string('language_label') + ":").grid(row=len(labels), column=0, padx=10, pady=5, sticky="w")
         lang_opts = [lang.capitalize() for lang in LANGUAGES.keys()]
-        lang_selector = tb.Combobox(win, values=lang_opts, state="readonly")
+        lang_selector = tb.Combobox(frame, values=lang_opts, state="readonly")
         lang_selector.grid(row=len(labels), column=1, padx=10, pady=5, sticky="ew")
         lang_selector.set(self.current_language.capitalize())
-        btn_frame = tb.Frame(win)
+
+        frame.columnconfigure(1, weight=1)
+        
+        btn_frame = tb.Frame(frame)
         btn_frame.grid(row=len(labels) + 1, columnspan=2, pady=15)
         tb.Button(btn_frame, text=self.get_string('test_connection_btn'), bootstyle="info-outline", command=lambda: self.test_db_connection(entries, win)).pack(side="left", padx=5)
         tb.Button(btn_frame, text=self.get_string('save_btn'), bootstyle="success", command=lambda: self.save_and_close_config(entries, lang_selector, win)).pack(side="left", padx=5)
 
+    # ATUALIZADO: Função para salvar o arquivo de configuração de forma codificada
     def save_and_close_config(self, entries, lang_selector, win):
         new_config = {k: v.get() for k, v in entries.items()}
         new_lang = lang_selector.get().lower()
         new_config['language'] = new_lang
-        self.db_config = new_config
+        
         try:
-            with open('db_config.json', 'w', encoding='utf-8') as f: 
-                json.dump(self.db_config, f, indent=4, ensure_ascii=False)
+            # Converte o dicionário para uma string JSON, depois para bytes e codifica
+            config_json = json.dumps(new_config, indent=4)
+            encoded_data = base64.b64encode(config_json.encode('utf-8'))
+            
+            with open('db_config.json', 'wb') as f: # Abrir em modo binário 'wb'
+                f.write(encoded_data)
+                
+            # Atualiza a configuração em memória
+            self.db_config = new_config
             messagebox.showinfo(self.get_string('save_btn'), self.get_string('config_save_success'), parent=win)
+
         except Exception as e:
             messagebox.showerror(self.get_string('save_btn'), self.get_string('config_save_error', error=e), parent=win)
         
@@ -2023,6 +2311,7 @@ class MainMenu(tb.Window):
                 messagebox.showinfo(self.get_string('test_connection_btn'), self.get_string('test_connection_success'), parent=parent_win)
         except Exception as e:
             messagebox.showerror(self.get_string('test_connection_btn'), self.get_string('test_connection_failed_db', error=e), parent=parent_win)
+
 
 # ==============================================================================
 # 7. PONTO DE ENTRADA DA APLICAÇÃO
