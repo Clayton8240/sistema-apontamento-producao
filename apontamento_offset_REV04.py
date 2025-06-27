@@ -1,7 +1,7 @@
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from ttkbootstrap import DateEntry
-from tkinter import messagebox, Toplevel, END, W, E, S, N, CENTER, filedialog, simpledialog
+from tkinter import messagebox, Toplevel, END, W, E, S, N, CENTER, filedialog, simpledialog, Listbox
 import psycopg2
 from datetime import datetime, time, date, timedelta
 import json
@@ -98,12 +98,13 @@ LANGUAGES = {
         'created_orders_section': "Ordens de Produção Criadas",
         'services_section_title': 'Etapas da Ordem',
 
-        # Colunas de Tabelas
+        # Colunas de Tabelas e Campos
         'col_id': 'ID', 'col_descricao': 'Descrição', 'col_nome': 'Nome', 'col_codigo': 'Código',
         'col_valor': 'Valor', 'col_data': 'Data', 'col_horainicio': 'Hora Início', 'col_horafim': 'Hora Fim',
         'col_wo': 'WO', 'col_cliente': 'Cliente', 'col_qtde_cores': 'QTDE CORES',
         'col_tipo_papel': 'TIPO PAPEL', 'col_numeroinspecao': 'Número Inspeção', 'col_gramatura': 'Gramatura',
-        'col_formato': 'Formato', 'col_fsc': 'FSC', 'col_tiragem_em_folhas': 'Tiragem em Folhas',
+        'col_formato': 'Formato', 'col_fsc': 'FSC',
+        'col_tiragem_para_impressao': 'Tiragem para Impressão',
         'col_giros_rodados': 'Giros Rodados', 'col_perdas_malas': 'Perdas/ Malas', 'col_total_lavagens': 'Total Lavagens',
         'col_total_acertos': 'Total Acertos', 'col_ocorrencias': 'Ocorrências',
         'col_motivos_parada': 'Motivo da Parada', 'col_quantidadeproduzida': 'Quantidade Produzida',
@@ -113,7 +114,9 @@ LANGUAGES = {
         'col_servico_status': 'Status da Etapa', 'col_sequencia': 'Sequência',
         'col_perdas_producao': 'Perdas (Produção)',
         'col_motivo_perda': 'Motivo da Perda',
-
+        'col_pn': 'PN (Partnumber)',
+        'col_acabamento': 'Acabamento',
+        'col_giros_previsto': 'Giros Total Previsto',
 
         # Menus
         'menu_settings': 'Configurações',
@@ -242,7 +245,7 @@ class LookupTableManagerWindow(Toplevel):
     
     lookup_table_schemas = {
         "equipamentos_tipos": {"display_name_key": "equipment_label", "table": "equipamentos_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
-        "qtde_cores_tipos": {"display_name_key": "col_qtde_cores", "table": "qtde_cores_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
+        "qtde_cores_tipos": {"display_name_key": "col_qtde_cores", "table": "qtde_cores_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}, "giros": {"type": "int", "db_column": "giros", "display_key": "col_giros_rodados", "editable": True}}},
         "tipos_papel": {"display_name_key": "col_tipo_papel", "table": "tipos_papel", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
         "impressores": {"display_name_key": "printer_label", "table": "impressores", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "nome": {"type": "str", "db_column": "nome", "display_key": "col_nome", "editable": True}}},
         "motivos_parada_tipos": {"display_name_key": "col_motivos_parada", "table": "motivos_parada_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "codigo": {"type": "int", "db_column": "codigo", "display_key": "col_codigo", "editable": True}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
@@ -251,7 +254,9 @@ class LookupTableManagerWindow(Toplevel):
         "gramaturas_tipos": {"display_name_key": "col_gramatura", "table": "gramaturas_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "valor": {"type": "int", "db_column": "valor", "display_key": "col_valor", "editable": True}}},
         "fsc_tipos": {"display_name_key": "col_fsc", "table": "fsc_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
         "turnos_tipos": {"display_name_key": "shift_label", "table": "turnos_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
+        "acabamentos_tipos": {"display_name_key": "col_acabamento", "table": "acabamentos_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
     }
+    
     def __init__(self, master, db_config, refresh_main_comboboxes_callback=None):
         super().__init__(master)
         self.master = master
@@ -284,7 +289,10 @@ class LookupTableManagerWindow(Toplevel):
         selection_frame = tb.LabelFrame(main_frame, text=self.get_string('manager_select_table'), bootstyle="primary", padding=10)
         selection_frame.pack(fill="x", pady=(0, 10))
         tb.Label(selection_frame, text=self.get_string('table_label') + ":", font=("Helvetica", 10, "bold")).pack(side="left", padx=5)
-        table_display_names_translated = [self.get_string(schema["display_name_key"]) for schema in self.lookup_table_schemas.values()]
+        
+        # Ordena as tabelas pelo nome de exibição para melhor usabilidade
+        table_display_names_translated = sorted([self.get_string(schema["display_name_key"]) for schema in self.lookup_table_schemas.values()])
+
         self.table_selector_combobox = tb.Combobox(selection_frame, values=table_display_names_translated, font=("Helvetica", 10), state="readonly")
         self.table_selector_combobox.pack(side="left", padx=5, fill="x", expand=True)
         self.table_selector_combobox.bind("<<ComboboxSelected>>", self.on_table_selected)
@@ -395,7 +403,11 @@ class LookupTableManagerWindow(Toplevel):
                 col_config = next((c for c in schema["columns"].values() if c["db_column"] == db_col), None)
                 if col_config:
                     if col_config["type"] == "int" and val:
-                        data[db_col] = int(val)
+                        try:
+                            data[db_col] = int(val)
+                        except ValueError:
+                             messagebox.showerror(self.get_string('invalid_input'), f"O campo para '{self.get_string(col_config['display_key'])}' deve ser um número inteiro.", parent=window)
+                             return
                     else:
                         data[db_col] = val or None
         except ValueError as e:
@@ -740,7 +752,7 @@ class EditOrdemWindow(Toplevel):
                 widget = tb.Combobox(form_frame, state="readonly", values=self.master.widgets[key]['values'])
             elif config["widget"] == "DateEntry":
                 widget = DateEntry(form_frame, dateformat='%d/%m/%Y')
-            else:
+            else: # Entry or other
                 widget = tb.Entry(form_frame)
             widget.grid(row=row, column=1, padx=5, pady=5, sticky=EW)
             self.widgets[key] = widget
@@ -818,26 +830,29 @@ class PCPWindow(Toplevel):
         self.master = master
         self.db_config = db_config
         self.title(self.get_string('btn_pcp_management'))
-        self.geometry("1000x700")
+        self.geometry("1200x800")
         self.grab_set()
-        
         
         self.fields_config = {
             "numero_wo": {"label_key": "col_wo", "widget": "Entry"},
+            "pn": {"label_key": "col_pn", "widget": "Entry"},
             "cliente": {"label_key": "col_cliente", "widget": "Entry"},
             "data_previsao_entrega": {"label_key": "col_data_previsao", "widget": "DateEntry"},
-            "tiragem_em_folhas": {"label_key": "col_tiragem_em_folhas", "widget": "Entry"}, 
+            "tiragem_para_impressao": {"label_key": "col_tiragem_para_impressao", "widget": "Entry", "trace_var": True}, 
             "equipamento": {"label_key": "equipment_label", "widget": "Combobox", "lookup": "equipamentos_tipos"},
-            "qtde_cores": {"label_key": "col_qtde_cores", "widget": "Combobox", "lookup": "qtde_cores_tipos"},
+            "qtde_cores": {"label_key": "col_qtde_cores", "widget": "Combobox", "lookup": "qtde_cores_tipos", "trace_var": True},
             "tipo_papel": {"label_key": "col_tipo_papel", "widget": "Combobox", "lookup": "tipos_papel"},
             "gramatura": {"label_key": "col_gramatura", "widget": "Combobox", "lookup": "gramaturas_tipos"},
             "formato": {"label_key": "col_formato", "widget": "Combobox", "lookup": "formatos_tipos"},
             "fsc": {"label_key": "col_fsc", "widget": "Combobox", "lookup": "fsc_tipos"},
         }
         self.widgets = {}
+        self.acabamento_data = {}
+        
         self.create_widgets()
         self.load_combobox_data()
         self.load_ordens()
+        self.calculate_giros() # Calcular na inicialização
 
     def get_string(self, key, **kwargs):
         return self.master.get_string(key, **kwargs)
@@ -846,41 +861,57 @@ class PCPWindow(Toplevel):
         return self.master.get_db_connection()
 
     def create_widgets(self):
-        
         main_frame = tb.Frame(self, padding=15)
         main_frame.pack(fill=BOTH, expand=True)
 
         form_frame = tb.LabelFrame(main_frame, text=self.get_string('new_order_section'), bootstyle=PRIMARY, padding=10)
         form_frame.pack(fill=X, pady=(0, 10), anchor=N)
 
-        num_fields = len(self.fields_config)
-        mid_point = (num_fields + 1) // 2
+        # Dividir os campos em 3 colunas para melhor layout
+        all_fields = list(self.fields_config.items())
         
-        col_num = 0
-        row_num = 0
-        for i, (key, config) in enumerate(self.fields_config.items()):
-            if i >= mid_point:
-                col_num = 2
-                row_num = i - mid_point
-            else:
-                col_num = 0
-                row_num = i
+        # Coluna 1 e 2: campos de entrada
+        fields_per_col = (len(all_fields) + 1) // 2
+        for i, (key, config) in enumerate(all_fields):
+            col = 0 if i < fields_per_col else 2
+            row = i if i < fields_per_col else i - fields_per_col
+
+            tb.Label(form_frame, text=self.get_string(config["label_key"]) + ":").grid(row=row, column=col, padx=5, pady=5, sticky=W)
             
-            tb.Label(form_frame, text=self.get_string(config["label_key"]) + ":").grid(row=row_num, column=col_num, padx=5, pady=5, sticky=W)
+            # Adiciona rastreamento de variável para campos que afetam o cálculo de giros
+            if config.get("trace_var"):
+                var = tb.StringVar()
+                var.trace_add("write", self.calculate_giros)
+            
             if config["widget"] == "Combobox":
-                widget = tb.Combobox(form_frame, state="readonly")
+                widget = tb.Combobox(form_frame, state="readonly", textvariable=var if config.get("trace_var") else None)
             elif config["widget"] == "DateEntry":
                 widget = DateEntry(form_frame, dateformat='%d/%m/%Y')
-            else:
-                widget = tb.Entry(form_frame)
-            widget.grid(row=row_num, column=col_num + 1, padx=5, pady=5, sticky=EW)
+            else: # Entry
+                widget = tb.Entry(form_frame, textvariable=var if config.get("trace_var") else None)
+            
+            widget.grid(row=row, column=col + 1, padx=5, pady=5, sticky=EW)
             self.widgets[key] = widget
+        
+        # Coluna 3: Acabamentos
+        acab_frame = tb.LabelFrame(form_frame, text=self.get_string('col_acabamento'), padding=5)
+        acab_frame.grid(row=0, column=4, rowspan=fields_per_col, sticky='ns', padx=(20, 5))
+        self.acabamento_listbox = Listbox(acab_frame, selectmode='multiple', exportselection=False, height=8)
+        self.acabamento_listbox.pack(fill=BOTH, expand=YES)
+        
+        # Coluna de cálculo de Giros
+        giros_frame = tb.Frame(form_frame)
+        giros_frame.grid(row=fields_per_col, column=0, columnspan=2, pady=10)
+        tb.Label(giros_frame, text=self.get_string('col_giros_previsto') + ":").pack(side=LEFT, padx=5)
+        self.giros_previsto_label = tb.Label(giros_frame, text="0", font=("Helvetica", 10, "bold"))
+        self.giros_previsto_label.pack(side=LEFT)
 
         form_frame.grid_columnconfigure(1, weight=1)
         form_frame.grid_columnconfigure(3, weight=1)
+        form_frame.grid_columnconfigure(4, weight=1) # Peso para a coluna de acabamentos
 
         btn_frame = tb.Frame(form_frame)
-        btn_frame.grid(row=mid_point, column=0, columnspan=4, pady=10)
+        btn_frame.grid(row=fields_per_col + 1, column=0, columnspan=5, pady=10)
         tb.Button(btn_frame, text=self.get_string('save_btn'), command=self.save_new_ordem, bootstyle=SUCCESS).pack(side=LEFT, padx=5)
         tb.Button(btn_frame, text=self.get_string('clear_filters_btn'), command=self.clear_fields, bootstyle=SECONDARY).pack(side=LEFT, padx=5)
 
@@ -896,8 +927,8 @@ class PCPWindow(Toplevel):
         tree_frame = tb.LabelFrame(main_frame, text=self.get_string('created_orders_section'), bootstyle=INFO, padding=10)
         tree_frame.pack(fill=BOTH, expand=True)
         
-        cols = ("id", "wo", "cliente", "equipamento", "data_previsao", "status")
-        headers = (self.get_string('col_id'), self.get_string('col_wo'), self.get_string('col_cliente'), self.get_string('equipment_label'), self.get_string('col_data_previsao'), self.get_string('col_status'))
+        cols = ("id", "wo", "pn", "cliente", "equipamento", "data_previsao", "status")
+        headers = (self.get_string('col_id'), self.get_string('col_wo'), self.get_string('col_pn'), self.get_string('col_cliente'), self.get_string('equipment_label'), self.get_string('col_data_previsao'), self.get_string('col_status'))
         self.tree = tb.Treeview(tree_frame, columns=cols, show="headings", bootstyle=PRIMARY)
         for col, header in zip(cols, headers):
             self.tree.heading(col, text=header)
@@ -910,6 +941,34 @@ class PCPWindow(Toplevel):
         self.tree.configure(yscrollcommand=scrollbar.set)
         
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
+
+    def calculate_giros(self, *args):
+        try:
+            tiragem_str = self.widgets['tiragem_para_impressao'].get()
+            qtde_cores = self.widgets['qtde_cores'].get()
+            
+            tiragem = int(tiragem_str) if tiragem_str.isdigit() else 0
+            
+            giros_multiplicador = 0
+            if qtde_cores:
+                conn = self.get_db_connection()
+                if not conn: return
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("SELECT giros FROM qtde_cores_tipos WHERE descricao = %s", (qtde_cores,))
+                        result = cur.fetchone()
+                        if result:
+                            giros_multiplicador = result[0]
+                except psycopg2.Error as e:
+                    print(f"Erro ao buscar giros: {e}") # Log para debug
+                finally:
+                    if conn: conn.close()
+
+            total_giros = tiragem * giros_multiplicador
+            self.giros_previsto_label.config(text=str(total_giros))
+        except Exception as e:
+            self.giros_previsto_label.config(text="Erro")
+            print(f"Erro no cálculo de giros: {e}") # Log para debug
 
     def on_tree_select(self, event=None):
         selected_item = self.tree.focus()
@@ -962,6 +1021,9 @@ class PCPWindow(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
+                # Exclui primeiro as associações de acabamento
+                cur.execute("DELETE FROM ordem_producao_acabamentos WHERE ordem_id = %s", (ordem_id,))
+                # Depois exclui a ordem
                 cur.execute("DELETE FROM ordem_producao WHERE id = %s", (ordem_id,))
             conn.commit()
             messagebox.showinfo("Sucesso", self.get_string('cancel_order_success'), parent=self)
@@ -984,11 +1046,11 @@ class PCPWindow(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT id, numero_wo, cliente, equipamento, data_previsao_entrega, status FROM ordem_producao ORDER BY data_cadastro_pcp DESC")
+                cur.execute("SELECT id, numero_wo, pn, cliente, equipamento, data_previsao_entrega, status FROM ordem_producao ORDER BY data_cadastro_pcp DESC")
                 for row in cur.fetchall():
                     row_list = list(row)
-                    if row_list[4]:
-                        row_list[4] = row_list[4].strftime('%d/%m/%Y')
+                    if row_list[5]: # Índice da data
+                        row_list[5] = row_list[5].strftime('%d/%m/%Y')
                     self.tree.insert("", END, values=tuple(row_list))
         except psycopg2.Error as e:
             messagebox.showerror("Erro ao Carregar", f"Falha ao carregar ordens de produção: {e}", parent=self)
@@ -1000,6 +1062,7 @@ class PCPWindow(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
+                # Carregar dados para Comboboxes padrão
                 schemas = LookupTableManagerWindow.lookup_table_schemas
                 for key, widget in self.widgets.items():
                     if isinstance(widget, tb.Combobox):
@@ -1007,14 +1070,22 @@ class PCPWindow(Toplevel):
                         lookup_ref = field_config.get("lookup")
                         if lookup_ref and lookup_ref in schemas:
                             schema_info = schemas[lookup_ref]
-                            display_col_info = next((v for k, v in schema_info['columns'].items() if v['editable'] and k != schema_info['pk_column']), None)
-                            if not display_col_info:
-                                 display_col_info = next((v for k, v in schema_info['columns'].items() if k != schema_info['pk_column']), None)
+                            # Acha a coluna de descrição (não a PK)
+                            display_col_info = next((v for k, v in schema_info['columns'].items() if k != schema_info['pk_column']), None)
                             if display_col_info:
                                 db_col = display_col_info['db_column']
                                 cur.execute(f'SELECT DISTINCT "{db_col}" FROM {schema_info["table"]} ORDER BY "{db_col}"')
                                 values = [str(row[0]) for row in cur.fetchall()]
                                 widget['values'] = values
+                
+                # Carregar dados para a Listbox de Acabamentos
+                cur.execute("SELECT id, descricao FROM acabamentos_tipos ORDER BY descricao")
+                self.acabamento_listbox.delete(0, END)
+                self.acabamento_data = {}
+                for acab_id, desc in cur.fetchall():
+                    self.acabamento_listbox.insert(END, desc)
+                    self.acabamento_data[desc] = acab_id
+
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao carregar dados para os comboboxes: {e}", parent=self)
         finally:
@@ -1025,12 +1096,17 @@ class PCPWindow(Toplevel):
         for key, widget in self.widgets.items():
             if isinstance(widget, DateEntry):
                 data[key] = widget.entry.get() or None
-            else:
+            elif isinstance(widget, tb.Combobox):
+                 data[key] = widget.get()
+            else: # Entry
                 data[key] = widget.get().strip()
                 
         if not data["numero_wo"]:
             messagebox.showwarning(self.get_string("required_field_warning", field_name=self.get_string("col_wo")), parent=self)
             return
+        
+        selected_acab_indices = self.acabamento_listbox.curselection()
+        selected_acab_ids = [self.acabamento_data[self.acabamento_listbox.get(i)] for i in selected_acab_indices]
 
         conn = self.get_db_connection()
         if not conn: return
@@ -1041,22 +1117,38 @@ class PCPWindow(Toplevel):
                 
                 if 'data_previsao_entrega' in non_empty_data:
                     non_empty_data['data_previsao_entrega'] = datetime.strptime(non_empty_data['data_previsao_entrega'], '%d/%m/%Y').date()
+                
+                if 'tiragem_para_impressao' in non_empty_data and not non_empty_data['tiragem_para_impressao'].isdigit():
+                    messagebox.showerror("Entrada Inválida", "O campo 'Tiragem para Impressão' deve ser um número.", parent=self)
+                    return
 
                 cols = non_empty_data.keys()
                 query = f"""
                     INSERT INTO ordem_producao ({', '.join(f'"{c}"' for c in cols)}, status)
                     VALUES ({', '.join([f'%({c})s' for c in cols])}, 'Em Aberto')
+                    RETURNING id
                 """
                 cur.execute(query, non_empty_data)
+                new_ordem_id = cur.fetchone()[0]
+
+                # Salvar acabamentos selecionados
+                if new_ordem_id and selected_acab_ids:
+                    acab_values = [(new_ordem_id, acab_id) for acab_id in selected_acab_ids]
+                    acab_query = "INSERT INTO ordem_producao_acabamentos (ordem_id, acabamento_id) VALUES (%s, %s)"
+                    cur.executemany(acab_query, acab_values)
+
             conn.commit()
             messagebox.showinfo("Sucesso", self.get_string('order_save_success'), parent=self)
             self.clear_fields()
             self.load_ordens()
             if 'production' in self.master.open_windows and self.master.open_windows['production'].winfo_exists():
                 self.master.open_windows['production'].load_open_wos()
-        except psycopg2.IntegrityError:
+        except psycopg2.IntegrityError as e:
             conn.rollback()
-            messagebox.showerror("Erro de Integridade", self.get_string('integrity_error_wo', wo=data['numero_wo']), parent=self)
+            if 'numero_wo' in str(e):
+                messagebox.showerror("Erro de Integridade", self.get_string('integrity_error_wo', wo=data['numero_wo']), parent=self)
+            else:
+                 messagebox.showerror("Erro de Integridade", f"Erro de banco de dados: {e}", parent=self)
         except (psycopg2.Error, ValueError) as e:
             conn.rollback()
             messagebox.showerror("Erro ao Salvar", self.get_string('save_order_error', error=e), parent=self)
@@ -1069,8 +1161,10 @@ class PCPWindow(Toplevel):
                 widget.set('')
             elif isinstance(widget, DateEntry):
                 widget.entry.delete(0, END)
-            else:
+            else: # Entry
                 widget.delete(0, END)
+        self.acabamento_listbox.selection_clear(0, END)
+        self.giros_previsto_label.config(text="0")
                 
 class ViewAppointmentsWindow(Toplevel):
     def __init__(self, master, db_config):
@@ -1371,7 +1465,7 @@ class App(Toplevel):
         # --- PAINEL DE INFORMAÇÕES DA WO ---
         self.wo_info_frame = tb.LabelFrame(top_frame, text="Informações da Ordem", bootstyle=PRIMARY, padding=15)
         self.wo_info_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
-        info_keys = {'col_cliente': 'Cliente', 'equipment_label': 'Equipamento', 'col_tipo_papel': 'Tipo Papel', 'col_tiragem_em_folhas': 'Tiragem Meta'}
+        info_keys = {'col_cliente': 'Cliente', 'equipment_label': 'Equipamento', 'col_tipo_papel': 'Tipo Papel', 'col_tiragem_para_impressao': 'Tiragem Meta'}
         for i, (key, text) in enumerate(info_keys.items()):
             tb.Label(self.wo_info_frame, text=f"{text}:", font="-weight bold").grid(row=i, column=0, sticky=W, padx=5, pady=2)
             label_widget = tb.Label(self.wo_info_frame, text="-")
@@ -1541,7 +1635,7 @@ class App(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
-                info_cols = ['cliente', 'equipamento', 'tipo_papel', 'tiragem_em_folhas']
+                info_cols = ['cliente', 'equipamento', 'tipo_papel', 'tiragem_para_impressao']
                 cur.execute(f"SELECT {', '.join(info_cols)} FROM ordem_producao WHERE id = %s", (self.selected_ordem_id,))
                 data = cur.fetchone()
                 if data:
@@ -1549,7 +1643,7 @@ class App(Toplevel):
                     self.info_labels['col_cliente'].config(text=data_dict.get('cliente', '-'))
                     self.info_labels['equipment_label'].config(text=data_dict.get('equipamento', '-'))
                     self.info_labels['col_tipo_papel'].config(text=data_dict.get('tipo_papel', '-'))
-                    self.info_labels['col_tiragem_em_folhas'].config(text=data_dict.get('tiragem_em_folhas', '-'))
+                    self.info_labels['col_tiragem_para_impressao'].config(text=data_dict.get('tiragem_para_impressao', '-'))
         except psycopg2.Error as e:
             messagebox.showerror("Erro", f"Falha ao carregar informações da WO: {e}", parent=self)
         finally:
@@ -1833,9 +1927,18 @@ class MainMenu(tb.Window):
         self.menubar = tb.Menu(self)
         config_menu = tb.Menu(self.menubar, tearoff=0)
         config_menu.add_command(label=self.get_string('menu_db_config'), command=self.open_configure_db_window)
-        config_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self, self.db_config))
+        config_menu.add_command(label=self.get_string('menu_manage_lookup'), command=self.open_lookup_table_manager)
         self.menubar.add_cascade(label=self.get_string('menu_settings'), menu=config_menu)
         self.config(menu=self.menubar)
+    
+    def open_lookup_table_manager(self):
+        # Callback para atualizar os comboboxes na janela PCP se estiver aberta
+        pcp_window = self.open_windows.get('pcp')
+        refresh_callback = None
+        if pcp_window and pcp_window.winfo_exists():
+            refresh_callback = pcp_window.load_combobox_data
+        
+        LookupTableManagerWindow(self, self.db_config, refresh_main_comboboxes_callback=refresh_callback)
     
     def open_production_window(self):
         if 'production' not in self.open_windows or not self.open_windows['production'].winfo_exists():
@@ -1892,7 +1995,8 @@ class MainMenu(tb.Window):
         new_config['language'] = new_lang
         self.db_config = new_config
         try:
-            with open('db_config.json', 'w') as f: json.dump(self.db_config, f, indent=4)
+            with open('db_config.json', 'w', encoding='utf-8') as f: 
+                json.dump(self.db_config, f, indent=4, ensure_ascii=False)
             messagebox.showinfo(self.get_string('save_btn'), self.get_string('config_save_success'), parent=win)
         except Exception as e:
             messagebox.showerror(self.get_string('save_btn'), self.get_string('config_save_error', error=e), parent=win)
