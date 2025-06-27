@@ -14,6 +14,7 @@ DROP TABLE IF EXISTS ordem_producao CASCADE;
 DROP TABLE IF EXISTS equipamentos_tipos CASCADE;
 DROP TABLE IF EXISTS impressores CASCADE;
 DROP TABLE IF EXISTS motivos_parada_tipos CASCADE;
+DROP TABLE IF EXISTS motivos_perda_tipos CASCADE; -- Tabela Adicionada
 DROP TABLE IF EXISTS turnos_tipos CASCADE;
 DROP TABLE IF EXISTS tipos_papel CASCADE;
 DROP TABLE IF EXISTS qtde_cores_tipos CASCADE;
@@ -39,6 +40,12 @@ CREATE TABLE impressores (
 CREATE TABLE motivos_parada_tipos (
     id SERIAL PRIMARY KEY,
     codigo INTEGER,
+    descricao VARCHAR(255) NOT NULL
+);
+
+-- NOVA TABELA PARA MOTIVOS DE PERDA
+CREATE TABLE motivos_perda_tipos (
+    id SERIAL PRIMARY KEY,
     descricao VARCHAR(255) NOT NULL
 );
 
@@ -124,7 +131,7 @@ CREATE TABLE apontamento_setup (
         ON DELETE CASCADE
 );
 
--- Tabela para os apontamentos de PRODUÇÃO
+-- Tabela para os apontamentos de PRODUÇÃO (COM NOVAS COLUNAS)
 CREATE TABLE apontamento (
     id SERIAL PRIMARY KEY,
     servico_id INTEGER NOT NULL,
@@ -144,11 +151,17 @@ CREATE TABLE apontamento (
     fsc VARCHAR(100),
     giros_rodados INTEGER,
     quantidadeproduzida INTEGER,
+    perdas_producao INTEGER,                      -- NOVA COLUNA
+    motivo_perda_id INTEGER,                      -- NOVA COLUNA
     ocorrencias TEXT,
     CONSTRAINT fk_servico_apontamento
         FOREIGN KEY(servico_id)
         REFERENCES ordem_servicos(id)
-        ON DELETE CASCADE
+        ON DELETE CASCADE,
+    CONSTRAINT fk_motivo_perda                      -- NOVA RESTRIÇÃO
+        FOREIGN KEY(motivo_perda_id)
+        REFERENCES motivos_perda_tipos(id)
+        ON DELETE SET NULL
 );
 
 -- Tabela para as PARADAS ocorridas durante o SETUP
@@ -194,6 +207,7 @@ CREATE TABLE paradas (
 
 INSERT INTO turnos_tipos (descricao) VALUES ('1º Turno'), ('2º Turno'), ('3º Turno'), ('Turno Comercial');
 INSERT INTO motivos_parada_tipos (descricao) VALUES ('Falta de Material'), ('Manutenção Mecânica'), ('Manutenção Elétrica'), ('Limpeza da Máquina'), ('Troca de Ferramenta'), ('Intervalo/Refeição');
+INSERT INTO motivos_perda_tipos (descricao) VALUES ('Erro de Impressão'), ('Papel Amassado'), ('Mancha de Tinta'), ('Corte Incorreto'), ('Problema de Acabamento');
 
 -- =============================================================================
 -- FIM DO SCRIPT

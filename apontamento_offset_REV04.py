@@ -1,5 +1,3 @@
-# Versão Final com Gestão de Serviços por Ordem de Produção
-
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from ttkbootstrap import DateEntry
@@ -113,6 +111,9 @@ LANGUAGES = {
         'col_impressor': 'Impressor', 'col_turno': 'Turno', 'col_data_previsao': 'Data Previsão',
         'col_data_cadastro': 'Data Cadastro', 'col_servico_descricao': 'Descrição da Etapa',
         'col_servico_status': 'Status da Etapa', 'col_sequencia': 'Sequência',
+        'col_perdas_producao': 'Perdas (Produção)',
+        'col_motivo_perda': 'Motivo da Perda',
+
 
         # Menus
         'menu_settings': 'Configurações',
@@ -138,6 +139,7 @@ LANGUAGES = {
         'order_save_success': 'Ordem de produção salva com sucesso!',
         'service_saved_success': 'Etapa salva com sucesso!',
         'service_deleted_success': 'Etapa excluída com sucesso!',
+        'production_saved_success': 'Apontamento de produção registrado com sucesso!',
 
         # Mensagens de Erro e Alerta
         'cancel_order_failed': 'Falha ao cancelar a Ordem de Produção: {error}',
@@ -185,6 +187,9 @@ LANGUAGES = {
         'select_wo_first': 'Selecione uma WO para ver as etapas.',
         'select_service_to_edit': 'Selecione uma etapa para editar.',
         'select_service_to_delete': 'Selecione uma etapa para excluir.',
+        'production_save_failed': 'Falha ao salvar o apontamento de produção: {error}',
+        'final_appointment_validation_error': 'Os campos "Giros Rodados" e "Quantidade Produzida" são obrigatórios.',
+
         
         # Mensagens de Confirmação
         'confirm_cancel_order_msg': 'Tem certeza que deseja cancelar permanentemente a ordem com WO "{wo}"? Esta ação não pode ser desfeita.',
@@ -214,12 +219,6 @@ LANGUAGES = {
         'setup_fields_required': 'Todos os campos de Setup (Perdas, Malas, Lavagens, Nº Inspeção) devem ser preenchidos para finalizar.',
         'setup_saved_success': 'Dados de Setup salvos com sucesso! Prossiga para a produção.',
         'setup_save_failed': 'Falha ao salvar os dados de Setup: {error}',
-        'production_section': '3. Apontamento de Produção',
-        'point_prod_stop_btn': 'Apontar Parada de Produção',
-        'status_idle': 'AGUARDANDO',
-        'status_setup_running': 'SETUP EM ANDAMENTO',
-        'status_setup_done': 'SETUP FINALIZADO',
-        'status_prod_running': 'PRODUÇÃO EM ANDAMENTO',
         'status_prod_done': 'PRODUÇÃO FINALIZADA',
         'finished': 'CONCLUÍDO',
     },
@@ -240,13 +239,14 @@ def get_connection_params(config_dict):
     }
 
 class LookupTableManagerWindow(Toplevel):
-    # (Esta classe permanece a mesma da versão anterior, sem alterações)
+    
     lookup_table_schemas = {
         "equipamentos_tipos": {"display_name_key": "equipment_label", "table": "equipamentos_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
         "qtde_cores_tipos": {"display_name_key": "col_qtde_cores", "table": "qtde_cores_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
         "tipos_papel": {"display_name_key": "col_tipo_papel", "table": "tipos_papel", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
         "impressores": {"display_name_key": "printer_label", "table": "impressores", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "nome": {"type": "str", "db_column": "nome", "display_key": "col_nome", "editable": True}}},
         "motivos_parada_tipos": {"display_name_key": "col_motivos_parada", "table": "motivos_parada_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "codigo": {"type": "int", "db_column": "codigo", "display_key": "col_codigo", "editable": True}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
+        "motivos_perda_tipos": {"display_name_key": "col_motivo_perda", "table": "motivos_perda_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
         "formatos_tipos": {"display_name_key": "col_formato", "table": "formatos_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
         "gramaturas_tipos": {"display_name_key": "col_gramatura", "table": "gramaturas_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "valor": {"type": "int", "db_column": "valor", "display_key": "col_valor", "editable": True}}},
         "fsc_tipos": {"display_name_key": "col_fsc", "table": "fsc_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
@@ -459,7 +459,7 @@ class LookupTableManagerWindow(Toplevel):
             if conn: conn.close()
 
 class RealTimeStopWindow(Toplevel):
-    # (Esta classe permanece a mesma da versão anterior, sem alterações)
+    
     def __init__(self, master, db_config, stop_callback):
         super().__init__(master)
         self.master = master
@@ -846,7 +846,7 @@ class PCPWindow(Toplevel):
         return self.master.get_db_connection()
 
     def create_widgets(self):
-        # (O restante do código deste método permanece o mesmo da versão anterior)
+        
         main_frame = tb.Frame(self, padding=15)
         main_frame.pack(fill=BOTH, expand=True)
 
@@ -1289,9 +1289,6 @@ class ViewAppointmentsWindow(Toplevel):
 # ==============================================================================
 # 5. CLASSE PRINCIPAL DE APONTAMENTO
 # ==============================================================================
-
-# SUBSTITUA TODA A SUA CLASSE 'App' ATUAL POR ESTA
-
 class App(Toplevel):
     def __init__(self, master, db_config):
         super().__init__(master)
@@ -1314,9 +1311,10 @@ class App(Toplevel):
         # Lista unificada para paradas
         self.all_stops_data = []
 
-        # IDs
+        # IDs e Dados
         self.selected_ordem_id, self.selected_servico_id, self.setup_id = None, None, None
         self.open_wos_data, self.pending_services_data = {}, {}
+        self.motivos_perda_data = {}
         
         # Dicionários de Widgets
         self.initial_fields, self.setup_fields, self.production_fields, self.info_labels = {}, {}, {}, {}
@@ -1414,12 +1412,18 @@ class App(Toplevel):
 
         prod_entries_frame = tb.Frame(self.prod_frame)
         prod_entries_frame.pack(fill=X, expand=YES, pady=(0,10))
-        prod_fields_defs = {'giros_rodados': 'col_giros_rodados', 'quantidadeproduzida': 'col_quantidadeproduzida'}
+        prod_fields_defs = {'giros_rodados': 'col_giros_rodados', 'quantidadeproduzida': 'col_quantidadeproduzida', 'perdas_producao': 'col_perdas_producao'}
         for key, label_key in prod_fields_defs.items():
             tb.Label(prod_entries_frame, text=self.get_string(label_key) + ":").pack(fill=X, pady=2)
             entry = tb.Entry(prod_entries_frame)
             entry.pack(fill=X)
             self.production_fields[key] = entry
+
+        # NOVO CAMPO: Motivo da Perda
+        tb.Label(prod_entries_frame, text=self.get_string("col_motivo_perda") + ":").pack(fill=X, pady=2)
+        self.motivo_perda_combobox = tb.Combobox(prod_entries_frame, state="readonly")
+        self.motivo_perda_combobox.pack(fill=X)
+        self.production_fields['motivo_perda'] = self.motivo_perda_combobox
         
         prod_control_frame = tb.Frame(self.prod_frame)
         prod_control_frame.pack(fill=X, expand=YES)
@@ -1448,7 +1452,7 @@ class App(Toplevel):
 
         status_bar = tb.Frame(main_frame, padding=(10, 5))
         status_bar.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(10,0))
-        tb.Label(status_bar, text=self.get_string("status_label"), font=("Helvetica", 12, "bold")).pack(side=LEFT)
+        tb.Label(status_bar, text="Status:", font=("Helvetica", 12, "bold")).pack(side=LEFT)
         self.status_label = tb.Label(status_bar, text=self.get_string('status_idle'), font=("Helvetica", 12, "bold"), bootstyle="secondary")
         self.status_label.pack(side=LEFT, padx=10)
 
@@ -1465,6 +1469,9 @@ class App(Toplevel):
                 self.impressor_combobox['values'] = [row[0] for row in cur.fetchall()]
                 cur.execute('SELECT descricao FROM turnos_tipos ORDER BY id')
                 self.turno_combobox['values'] = [row[0] for row in cur.fetchall()]
+                cur.execute('SELECT id, descricao FROM motivos_perda_tipos ORDER BY descricao')
+                self.motivos_perda_data = {desc: mid for mid, desc in cur.fetchall()}
+                self.motivo_perda_combobox['values'] = list(self.motivos_perda_data.keys())
         except Exception as e:
             messagebox.showwarning("Erro", f"Falha ao carregar dados iniciais: {e}", parent=self)
         finally:
@@ -1476,7 +1483,7 @@ class App(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT id, numero_wo, cliente FROM ordem_producao WHERE status != 'Concluido' ORDER BY numero_wo")
+                cur.execute("SELECT id, numero_wo, cliente FROM ordem_producao WHERE status != 'Concluído' ORDER BY numero_wo")
                 wos_list = []
                 for ordem_id, numero_wo, cliente in cur.fetchall():
                     display_text = f"{numero_wo} - {cliente or 'Sem Cliente'}"
@@ -1659,9 +1666,81 @@ class App(Toplevel):
             if conn: conn.close()
 
     def submit_final_production(self):
-        # Lógica para salvar o apontamento de produção final
-        pass
+        # 1. Validação
+        prod_data = {key: widget.get().strip() for key, widget in self.production_fields.items()}
+        if not prod_data.get('giros_rodados') or not prod_data.get('quantidadeproduzida'):
+            messagebox.showerror("Validação", self.get_string('final_appointment_validation_error'), parent=self)
+            return
+
+        # 2. Coleta de dados
+        final_data = {}
+        # Dados da Seleção Inicial
+        final_data['servico_id'] = self.selected_servico_id
+        final_data['ordem_id'] = self.selected_ordem_id
+        final_data['impressor'] = self.initial_fields['impressor'].get()
+        final_data['turno'] = self.initial_fields['turno'].get()
+        final_data['wo'] = self.wo_combobox.get().split(' - ')[0]
         
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            # Coleta dados complementares da WO
+            with conn.cursor() as cur:
+                cur.execute("SELECT cliente, equipamento, qtde_cores, tipo_papel, formato, gramatura, fsc FROM ordem_producao WHERE id = %s", (self.selected_ordem_id,))
+                wo_details = cur.fetchone()
+                if wo_details:
+                    keys = ['cliente', 'equipamento', 'qtde_cores', 'tipo_papel', 'formato', 'gramatura', 'fsc']
+                    final_data.update(dict(zip(keys, wo_details)))
+
+            # Coleta dados do formulário de Produção
+            final_data['data'] = date.today()
+            final_data['horainicio'] = self.prod_start_time.time() if self.prod_start_time else None
+            final_data['horafim'] = self.prod_end_time.time() if self.prod_end_time else None
+            final_data['giros_rodados'] = int(prod_data['giros_rodados']) if prod_data['giros_rodados'] else None
+            final_data['quantidadeproduzida'] = int(prod_data['quantidadeproduzida']) if prod_data['quantidadeproduzida'] else None
+            final_data['perdas_producao'] = int(prod_data['perdas_producao']) if prod_data.get('perdas_producao') else None
+            
+            selected_motivo_perda = self.motivo_perda_combobox.get()
+            final_data['motivo_perda_id'] = self.motivos_perda_data.get(selected_motivo_perda)
+
+            # 3. Transação no Banco de Dados
+            with conn.cursor() as cur:
+                # Insere apontamento principal de produção
+                cols = [f'"{k}"' for k in final_data.keys() if final_data[k] is not None]
+                filtered_data = {k: v for k, v in final_data.items() if v is not None}
+                placeholders = [f"%({k})s" for k in filtered_data.keys()]
+                
+                query = f"INSERT INTO apontamento ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) RETURNING id"
+                cur.execute(query, filtered_data)
+                apontamento_id = cur.fetchone()[0]
+
+                # Insere paradas de produção
+                for stop in self.all_stops_data:
+                    if stop['type'] == 'Produção':
+                        cur.execute(
+                            "INSERT INTO paradas (apontamento_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s)",
+                            (apontamento_id, stop['motivo_id'], stop['hora_inicio_parada'], stop['hora_fim_parada'], stop.get('motivo_extra_detail'))
+                        )
+                
+                # Atualiza status do serviço
+                cur.execute("UPDATE ordem_servicos SET status = 'Concluído' WHERE id = %s", (self.selected_servico_id,))
+                
+                # Verifica se todos os serviços da ordem foram concluídos para então fechar a WO
+                cur.execute("SELECT COUNT(*) FROM ordem_servicos WHERE ordem_id = %s AND status = 'Pendente'", (self.selected_ordem_id,))
+                pending_services = cur.fetchone()[0]
+                if pending_services == 0:
+                    cur.execute("UPDATE ordem_producao SET status = 'Concluído' WHERE id = %s", (self.selected_ordem_id,))
+
+            conn.commit()
+            messagebox.showinfo("Sucesso", self.get_string('production_saved_success'), parent=self)
+            self.destroy() # Fecha a janela de apontamento
+
+        except (psycopg2.Error, ValueError, KeyError) as e:
+            if conn: conn.rollback()
+            messagebox.showerror("Erro", self.get_string('production_save_failed', error=e), parent=self)
+        finally:
+            if conn: conn.close()
+
     def update_setup_timer(self):
         if self.current_state == 'SETUP_RUNNING':
             elapsed = datetime.now() - self.setup_start_time
@@ -1701,7 +1780,7 @@ class App(Toplevel):
 # 6. CLASSE DE MENU PRINCIPAL
 # ==============================================================================
 class MainMenu(tb.Window):
-    # (Esta classe permanece a mesma da versão anterior, sem alterações)
+    
     def __init__(self):
         super().__init__(themename="flatly")
         self.db_config = {}
@@ -1847,3 +1926,10 @@ class MainMenu(tb.Window):
 if __name__ == "__main__":
     main_app = MainMenu()
     main_app.mainloop()
+
+
+# =============================================================================
+# DESENVOLVIDO POR CLAYTON ALMEIDA
+#
+#
+# =============================================================================
