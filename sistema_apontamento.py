@@ -17,7 +17,7 @@ import bcrypt
 # ==============================================================================
 # STRINGS (Traduções)
 # ==============================================================================
-# ... (Toda a sua secção de idiomas permanece aqui, sem alterações)
+
 LANGUAGES = {
     'portugues': {
         # Títulos de Janelas e Abas
@@ -2189,7 +2189,7 @@ class LoginWindow(tb.Window):
             print(f"Erro ao carregar a imagem 'logo.png': {e}")
             # Se a imagem não for encontrada, mostra um texto no lugar
             tb.Label(main_frame, text="Sistema de Produção", font=("Helvetica", 16, "bold")).pack(pady=(10, 20))
-        # ----------------------------------------------------
+        
 
         tb.Label(main_frame, text="Usuário:").pack(fill=X, padx=20)
         self.user_entry = tb.Entry(main_frame, bootstyle=PRIMARY)
