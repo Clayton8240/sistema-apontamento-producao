@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+from PIL import Image, ImageTk
+from tkinter import PhotoImage
 import base64
 import openpyxl
 import ttkbootstrap as tb
@@ -9,13 +12,12 @@ from datetime import datetime, time, date, timedelta
 import json
 import os
 import csv
+import bcrypt
 
 # ==============================================================================
 # STRINGS (Traduções)
 # ==============================================================================
-# ==============================================================================
-# 1. I18N STRINGS (Traduções)
-# ==============================================================================
+# ... (Toda a sua secção de idiomas permanece aqui, sem alterações)
 LANGUAGES = {
     'portugues': {
         # Títulos de Janelas e Abas
@@ -228,7 +230,7 @@ LANGUAGES = {
         'finished': 'CONCLUÍDO',
     },
     'english': {
-        # Window and Tab Titles
+      # Window and Tab Titles
         'app_title': 'Production Tracking System',
         'main_menu_title': 'Main Menu - Production System',
         'stop_tracking_window_title': 'Real-Time Stop Tracking',
@@ -436,13 +438,11 @@ LANGUAGES = {
         'finished': 'COMPLETED',
     },
 }
-
 # ==============================================================================
-# 2. FUNÇÕES E CLASSES DE DEPENDÊNCIA
+# FUNÇÕES E CLASSES DE DEPENDÊNCIA
 # ==============================================================================
 
 def get_connection_params(config_dict):
-    """Extrai os parâmetros de conexão do dicionário de configuração."""
     return {
         'host': config_dict.get('host'),
         'port': config_dict.get('porta'),
@@ -452,7 +452,6 @@ def get_connection_params(config_dict):
     }
 
 class LookupTableManagerWindow(Toplevel):
-    
     lookup_table_schemas = {
         "equipamentos_tipos": {"display_name_key": "equipment_label", "table": "equipamentos_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
         "qtde_cores_tipos": {"display_name_key": "col_qtde_cores", "table": "qtde_cores_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}, "giros": {"type": "int", "db_column": "giros", "display_key": "col_giros_rodados", "editable": True}}},
@@ -500,7 +499,6 @@ class LookupTableManagerWindow(Toplevel):
         selection_frame.pack(fill="x", pady=(0, 10))
         tb.Label(selection_frame, text=self.get_string('table_label') + ":", font=("Helvetica", 10, "bold")).pack(side="left", padx=5)
         
-        # Ordena as tabelas pelo nome de exibição para melhor usabilidade
         table_display_names_translated = sorted([self.get_string(schema["display_name_key"]) for schema in self.lookup_table_schemas.values()])
 
         self.table_selector_combobox = tb.Combobox(selection_frame, values=table_display_names_translated, font=("Helvetica", 10), state="readonly")
@@ -769,10 +767,6 @@ class RealTimeStopWindow(Toplevel):
         self.stop_callback(stop_data)
         self.destroy()
 
-# ==============================================================================
-# 3. CLASSES DE GERENCIAMENTO
-# ==============================================================================
-
 class ServiceManagerWindow(Toplevel):
     def __init__(self, master, db_config, ordem_id, wo_number, refresh_callback=None):
         super().__init__(master)
@@ -925,9 +919,6 @@ class ServiceManagerWindow(Toplevel):
         finally:
             if conn: conn.close()
 
-# ===================================================
-#  INÍCIO DA CLASSE EditOrdemWindow
-# ===================================================
 class EditOrdemWindow(Toplevel):
     def __init__(self, master, db_config, ordem_id, refresh_callback):
         super().__init__(master)
@@ -938,7 +929,6 @@ class EditOrdemWindow(Toplevel):
         
         self.fields_config = self.master.fields_config
         self.widgets = {}
-        # NOVO: Mapa de giros também na janela de edição
         self.giros_map = self.master.giros_map
 
         self.create_widgets()
@@ -1049,7 +1039,6 @@ class EditOrdemWindow(Toplevel):
                             else: # Entry
                                 widget.delete(0, END)
                                 widget.insert(0, str(value))
-                    # Desabilita o campo de giros após o carregamento dos dados
                     self.widgets['giros_previstos'].config(state=DISABLED)
         except Exception as e:
             messagebox.showerror("Erro ao Carregar", f"Falha ao carregar dados da ordem: {e}", parent=self)
@@ -1084,17 +1073,14 @@ class EditOrdemWindow(Toplevel):
                 cur.execute(query, values)
             conn.commit()
             messagebox.showinfo("Sucesso", self.get_string('update_order_success'), parent=self)
-            # Chama a função de recarregar dados da janela principal
             if self.refresh_callback: self.refresh_callback()
             self.destroy()
         except Exception as e:
             if conn: conn.rollback()
             messagebox.showerror("Erro ao Salvar", self.get_string('update_order_failed', error=e), parent=self)
         finally:
-            if conn: conn.close()         
-# ===============================================
-#  INÍCIO DO CÓDIGO CLASSE PCPWindow
-# ===============================================
+            if conn: conn.close()
+
 class PCPWindow(Toplevel):
     def __init__(self, master, db_config):
         super().__init__(master)
@@ -1296,7 +1282,6 @@ class PCPWindow(Toplevel):
         finally:
             if conn: conn.close()
 
-    # ATUALIZADO: Lógica de carregamento dos comboboxes corrigida
     def load_all_combobox_data(self):
         self.load_ordens()
         conn = self.get_db_connection()
@@ -1314,11 +1299,10 @@ class PCPWindow(Toplevel):
                         if lookup_ref and lookup_ref in schemas:
                             schema_info = schemas[lookup_ref]
                             
-                            # LÓGICA CORRIGIDA: Encontra a coluna de descrição dinamicamente
                             descriptive_col_key = None
                             if 'descricao' in schema_info['columns']: descriptive_col_key = 'descricao'
                             elif 'nome' in schema_info['columns']: descriptive_col_key = 'nome'
-                            else: # Fallback para o primeiro campo que não seja a PK
+                            else: 
                                 pk_db_col = schema_info['columns'][schema_info['pk_column']]['db_column']
                                 for col_key, col_data in schema_info['columns'].items():
                                     if col_data['db_column'] != pk_db_col:
@@ -1415,10 +1399,6 @@ class PCPWindow(Toplevel):
             messagebox.showerror("Erro na Exportação", f"Ocorreu um erro ao exportar a planilha:\n{e}", parent=self)
         finally:
             if conn: conn.close()
-
-# ===============================================
-#  Tela Apontamentos
-# ===============================================
 
 class ViewAppointmentsWindow(Toplevel):
     def __init__(self, master, db_config):
@@ -1633,11 +1613,6 @@ class ViewAppointmentsWindow(Toplevel):
         except Exception as e:
             messagebox.showerror("Erro", self.get_string("export_error", error=e), parent=self)
 
-
-# ==============================================================================
-# 5. CLASSE PRINCIPAL DE APONTAMENTO
-# ==============================================================================
-
 class App(Toplevel):
     def __init__(self, master, db_config):
         super().__init__(master)
@@ -1657,7 +1632,6 @@ class App(Toplevel):
         self.open_wos_data, self.pending_services_data = {}, {}
         self.motivos_perda_data = {}
         
-        # NOVO: Dicionário para guardar os multiplicadores de giros
         self.giros_map = {}
 
         self.initial_fields, self.setup_fields, self.production_fields, self.info_labels = {}, {}, {}, {}
@@ -1711,14 +1685,12 @@ class App(Toplevel):
         self.wo_info_frame = tb.LabelFrame(top_frame, text="Informações da Ordem", bootstyle=PRIMARY, padding=15)
         self.wo_info_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
         
-        # ATUALIZADO: Adicionados os campos 'qtde_cores' e 'giros_previstos'
         info_keys = {
             'col_cliente': 'Cliente', 'equipment_label': 'Equipamento', 
             'col_tipo_papel': 'Tipo Papel', 'col_tiragem_em_folhas': 'Tiragem Meta',
             'col_qtde_cores': 'QTDE Cores', 'giros_previstos': 'Giros Previstos'
         }
         for i, (key, text) in enumerate(info_keys.items()):
-            # Usando uma chave de tradução se existir, senão o texto padrão
             display_text = self.get_string(key) if self.get_string(key) != key else text
             tb.Label(self.wo_info_frame, text=f"{display_text}:", font="-weight bold").grid(row=i, column=0, sticky=W, padx=5, pady=2)
             label_widget = tb.Label(self.wo_info_frame, text="-")
@@ -1765,7 +1737,6 @@ class App(Toplevel):
             entry.pack(fill=X)
             self.production_fields[key] = entry
 
-        # ATUALIZADO: Adiciona o gatilho de cálculo e desabilita o campo de giros
         self.production_fields['quantidadeproduzida'].bind("<KeyRelease>", self._calcular_giros_rodados)
         self.production_fields['giros_rodados'].config(state=DISABLED)
 
@@ -1803,16 +1774,15 @@ class App(Toplevel):
         self.status_label = tb.Label(status_bar, text=self.get_string('status_idle'), font=("Helvetica", 12, "bold"), bootstyle="secondary")
         self.status_label.pack(side=LEFT, padx=10)
 
-    # NOVO: Função para calcular os giros rodados
     def _calcular_giros_rodados(self, event=None):
         try:
             qtde_produzida_str = self.production_fields['quantidadeproduzida'].get()
-            cores_desc = self.info_labels.get('col_qtde_cores', tb.Label()).cget("text") # Pega do painel de info
+            cores_desc = self.info_labels.get('col_qtde_cores', tb.Label()).cget("text") 
 
             if not qtde_produzida_str or not cores_desc or cores_desc == '-': return
             
             qtde_produzida = int(qtde_produzida_str)
-            multiplicador = self.giros_map.get(cores_desc, 1) # Usa o mapa de giros
+            multiplicador = self.giros_map.get(cores_desc, 1) 
             giros_calculado = qtde_produzida * multiplicador
             
             giros_widget = self.production_fields['giros_rodados']
@@ -1821,20 +1791,18 @@ class App(Toplevel):
             giros_widget.insert(0, str(giros_calculado))
             giros_widget.config(state=DISABLED)
             
-        except (ValueError, TclError): pass # Ignora erros de conversão
+        except (ValueError, TclError): pass 
         except Exception as e: print(f"Erro ao calcular giros rodados: {e}")
 
     def get_db_connection(self):
         return self.master.get_db_connection()
 
-    # ATUALIZADO: Carrega o mapa de giros ao iniciar
     def load_initial_data(self):
         self.load_open_wos()
         conn = self.get_db_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
-                # Carrega o mapa de giros para o cálculo
                 cur.execute('SELECT descricao, giros FROM qtde_cores_tipos')
                 self.giros_map = {desc: giros if giros is not None else 1 for desc, giros in cur.fetchall()}
                 
@@ -1906,7 +1874,6 @@ class App(Toplevel):
         self.update_wo_info_panel()
         self.update_ui_state()
         
-    # ATUALIZADO: Busca os novos campos do banco
     def update_wo_info_panel(self):
         for label in self.info_labels.values(): label.config(text="-")
         if not self.selected_ordem_id: return
@@ -1935,11 +1902,9 @@ class App(Toplevel):
         state = self.current_state
         all_widgets = list(self.initial_fields.values()) + list(self.setup_fields.values()) + list(self.production_fields.values())
         for widget in all_widgets:
-             # Deixa os campos de produção editáveis, exceto giros rodados
             if widget not in [self.production_fields['giros_rodados']]:
                 widget.config(state=NORMAL if state in ['PRODUCTION_RUNNING', 'FINISHED'] else DISABLED)
 
-        # Lógica de controle de estado principal
         if state == 'IDLE':
             self.wo_combobox.config(state='readonly'); 
             if self.wo_combobox.get(): self.service_combobox.config(state='readonly')
@@ -2035,7 +2000,6 @@ class App(Toplevel):
             if conn: conn.close()
 
     def submit_final_production(self):
-        # Habilita o campo de giros temporariamente para pegar seu valor
         self.production_fields['giros_rodados'].config(state=NORMAL)
         prod_data = {key: widget.get().strip() for key, widget in self.production_fields.items()}
         self.production_fields['giros_rodados'].config(state=DISABLED)
@@ -2134,14 +2098,240 @@ class App(Toplevel):
             self.stops_tree.insert('', END, values=(stop['type'], stop['motivo_text'], start, end, str(duration)))
 
 # ==============================================================================
-# CLASSE DE MENU PRINCIPAL
+# NOVA ESTRUTURA DE LOGIN E MENU
 # ==============================================================================
-class MainMenu(tb.Window):
-    
+
+class LoginWindow(tb.Window):
     def __init__(self):
         super().__init__(themename="flatly")
         self.db_config = {}
-        self.load_db_config() # Carrega as configurações (agora decodificadas)
+        self.load_db_config()
+        self.current_language = self.db_config.get('language', 'portugues')
+        self.title("Login - Sistema de Produção")
+        self.geometry("450x400") # Aumentei um pouco a altura para a logo
+        
+        # --- NOVO: Carregar e definir o ícone da janela ---
+        try:
+            icon_image = PhotoImage(file='icon.png')
+            self.iconphoto(False, icon_image)
+        except Exception as e:
+            print(f"Erro ao carregar o ícone 'icon.png': {e}")
+            # A aplicação continua mesmo se o ícone não for encontrado
+        # --------------------------------------------------
+
+        self.create_login_widgets()
+        self.center_window()
+
+    def center_window(self):
+        self.update_idletasks()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        x = (sw // 2) - (w // 2)
+        y = (sh // 2) - (h // 2)
+        self.geometry(f"{w}x{h}+{x}+{y}")
+        
+    def get_string(self, key, **kwargs):
+        return LANGUAGES.get(self.current_language, LANGUAGES['portugues']).get(key, f"_{key}_").format(**kwargs)
+
+    def load_db_config(self):
+        config_path = 'db_config.json'
+        if os.path.exists(config_path) and os.path.getsize(config_path) > 0:
+            try:
+                with open(config_path, 'rb') as f:
+                    encoded_data = f.read()
+                    decoded_data = base64.b64decode(encoded_data)
+                    self.db_config = json.loads(decoded_data)
+            except Exception as e:
+                messagebox.showerror("Erro de Configuração", f"Não foi possível ler o arquivo 'db_config.json'.\n\nDetalhes: {e}")
+                self.db_config = {}
+        else:
+            self.db_config = {}
+
+    def get_db_connection(self):
+        if not all(self.db_config.get(k) for k in ['host', 'porta', 'banco', 'usuário', 'senha']):
+            if self.winfo_exists():
+                 messagebox.showerror(self.get_string("db_conn_incomplete"), self.get_string("db_conn_incomplete"), parent=self)
+            return None
+        try:
+            return psycopg2.connect(**get_connection_params(self.db_config))
+        except Exception as e:
+            if self.winfo_exists():
+                messagebox.showerror("Erro de Conexão", f"Não foi possível conectar ao banco de dados: {e}", parent=self)
+            return None
+
+    def create_login_widgets(self):
+        for widget in self.winfo_children(): widget.destroy()
+        
+        main_frame = tb.Frame(self, padding=20)
+        main_frame.pack(fill=BOTH, expand=YES)
+        
+        # --- NOVO: Carregar e exibir o logo da empresa ---
+        try:
+            # Usamos a Pillow para abrir a imagem
+            self.logo_pil_image = Image.open("logo.png")
+            # Redimensionamos a imagem para um tamanho adequado (ex: 200 pixels de largura)
+            # Mantendo a proporção
+            base_width = 200
+            w_percent = (base_width / float(self.logo_pil_image.size[0]))
+            h_size = int((float(self.logo_pil_image.size[1]) * float(w_percent)))
+            self.logo_pil_image = self.logo_pil_image.resize((base_width, h_size), Image.LANCZOS)
+            
+            # Convertemos para um formato que o Tkinter entende
+            self.logo_tk_image = ImageTk.PhotoImage(self.logo_pil_image)
+            
+            # Criamos um Label para mostrar a imagem
+            logo_label = tb.Label(main_frame, image=self.logo_tk_image)
+            logo_label.pack(pady=(0, 20))
+            
+        except Exception as e:
+            print(f"Erro ao carregar a imagem 'logo.png': {e}")
+            # Se a imagem não for encontrada, mostra um texto no lugar
+            tb.Label(main_frame, text="Sistema de Produção", font=("Helvetica", 16, "bold")).pack(pady=(10, 20))
+        # ----------------------------------------------------
+
+        tb.Label(main_frame, text="Usuário:").pack(fill=X, padx=20)
+        self.user_entry = tb.Entry(main_frame, bootstyle=PRIMARY)
+        self.user_entry.pack(fill=X, pady=(0, 10), padx=20)
+        
+        tb.Label(main_frame, text="Senha:").pack(fill=X, padx=20)
+        self.pass_entry = tb.Entry(main_frame, show="*", bootstyle=PRIMARY)
+        self.pass_entry.pack(fill=X, pady=(0, 20), padx=20)
+        self.pass_entry.bind("<Return>", self.handle_login)
+
+        btn_frame = tb.Frame(main_frame)
+        btn_frame.pack(fill=X, padx=20)
+        tb.Button(btn_frame, text="Entrar", bootstyle=SUCCESS, command=self.handle_login).pack(side=LEFT, expand=YES, fill=X, ipady=5)
+        tb.Button(btn_frame, text="Configurar DB", bootstyle="secondary-outline", command=lambda: self.open_configure_db_window(self)).pack(side=LEFT, padx=(10,0))
+    
+    
+    def handle_login(self, event=None):
+        username = self.user_entry.get().strip()
+        password = self.pass_entry.get().strip()
+
+        if not username or not password:
+            messagebox.showwarning("Campos Vazios", "Por favor, preencha usuário e senha.", parent=self)
+            return
+
+        conn = self.get_db_connection()
+        if not conn: return
+
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT senha_hash, permissao FROM usuarios WHERE nome_usuario = %s AND ativo = TRUE", (username,))
+                user_data = cur.fetchone()
+
+            if user_data:
+                stored_hash, permission = user_data
+                if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
+                    self.withdraw() ### ALTERADO: Esconde a janela de login em vez de destruir
+                    self.redirect_user(permission)
+                else:
+                    messagebox.showerror("Erro de Login", "Senha incorreta.", parent=self)
+            else:
+                messagebox.showerror("Erro de Login", "Usuário não encontrado ou inativo.", parent=self)
+        except psycopg2.Error as db_error:
+            messagebox.showerror("Erro de Banco de Dados", f"Não foi possível verificar as credenciais. Verifique a conexão e se a tabela 'usuarios' existe.\n\nDetalhes: {db_error}", parent=self)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Ocorreu um erro durante o login: {e}", parent=self)
+            self.deiconify() # Mostra a janela de login novamente em caso de erro
+        finally:
+            if conn: conn.close()
+
+    def handle_child_window_close(self, child_window):
+        ### NOVO: Função para gerir o fecho das janelas filhas
+        child_window.destroy()
+        self.deiconify() # Mostra a janela de login novamente
+        self.user_entry.delete(0, END)
+        self.pass_entry.delete(0, END)
+        self.user_entry.focus_set()
+
+    def redirect_user(self, permission):
+        ### ALTERADO: Lógica de redirecionamento e gestão de fecho de janelas
+        if permission == 'offset':
+            app_win = App(master=self, db_config=self.db_config)
+            app_win.protocol("WM_DELETE_WINDOW", lambda: self.handle_child_window_close(app_win))
+        elif permission == 'pcp':
+            pcp_win = PCPWindow(master=self, db_config=self.db_config)
+            pcp_win.protocol("WM_DELETE_WINDOW", lambda: self.handle_child_window_close(pcp_win))
+        elif permission == 'admin':
+            admin_menu = MenuPrincipalWindow(master=self, db_config=self.db_config)
+            admin_menu.protocol("WM_DELETE_WINDOW", self.destroy)
+        else:
+            messagebox.showerror("Erro de Permissão", "Permissão de usuário desconhecida.", parent=self)
+            self.deiconify()
+
+    def open_configure_db_window(self, parent):
+        win = Toplevel(parent)
+        win.title(self.get_string('config_win_title'))
+        win.transient(parent)
+        win.grab_set()
+        
+        frame = tb.Frame(win, padding=10)
+        frame.pack(expand=True, fill=BOTH)
+        
+        labels = [("host", 'host_label'), ("porta", 'port_label'), ("usuário", 'user_label'), ("senha", 'password_label'), ("banco", 'db_label'), ("tabela", 'table_label')]
+        entries = {}
+        for i, (key, label_key) in enumerate(labels):
+            tb.Label(frame, text=self.get_string(label_key) + ":").grid(row=i, column=0, padx=10, pady=5, sticky="w")
+            e = tb.Entry(frame, show='*' if key == "senha" else '')
+            e.grid(row=i, column=1, padx=10, pady=5, sticky="ew")
+            e.insert(0, self.db_config.get(key, ''))
+            entries[key] = e
+        
+        tb.Label(frame, text=self.get_string('language_label') + ":").grid(row=len(labels), column=0, padx=10, pady=5, sticky="w")
+        lang_opts = [lang.capitalize() for lang in LANGUAGES.keys()]
+        lang_selector = tb.Combobox(frame, values=lang_opts, state="readonly")
+        lang_selector.grid(row=len(labels), column=1, padx=10, pady=5, sticky="ew")
+        lang_selector.set(self.current_language.capitalize())
+
+        frame.columnconfigure(1, weight=1)
+        
+        btn_frame = tb.Frame(frame)
+        btn_frame.grid(row=len(labels) + 1, columnspan=2, pady=15)
+        tb.Button(btn_frame, text=self.get_string('test_connection_btn'), bootstyle="info-outline", command=lambda: self.test_db_connection(entries, win)).pack(side="left", padx=5)
+        tb.Button(btn_frame, text=self.get_string('save_btn'), bootstyle="success", command=lambda: self.save_and_close_config(entries, lang_selector, win)).pack(side="left", padx=5)
+
+    def save_and_close_config(self, entries, lang_selector, win):
+        new_config = {k: v.get() for k, v in entries.items()}
+        new_lang = lang_selector.get().lower()
+        new_config['language'] = new_lang
+        
+        try:
+            config_json = json.dumps(new_config, indent=4)
+            encoded_data = base64.b64encode(config_json.encode('utf-8'))
+            with open('db_config.json', 'wb') as f:
+                f.write(encoded_data)
+            self.db_config = new_config
+            messagebox.showinfo(self.get_string('save_btn'), self.get_string('config_save_success'), parent=win)
+
+        except Exception as e:
+            messagebox.showerror(self.get_string('save_btn'), self.get_string('config_save_error', error=e), parent=win)
+        
+        if self.current_language != new_lang:
+            self.current_language = new_lang
+            self.create_login_widgets()
+        win.destroy()
+    
+    def test_db_connection(self, entries, parent_win):
+        test_config = {k: v.get() for k, v in entries.items()}
+        if not all(test_config.get(k) for k in ['host', 'porta', 'banco', 'usuário', 'senha']):
+            messagebox.showwarning(self.get_string('test_connection_btn'), self.get_string('test_connection_warning_fill_fields'), parent=parent_win)
+            return
+        
+        conn_params = get_connection_params(test_config)
+        try:
+            with psycopg2.connect(**conn_params):
+                messagebox.showinfo(self.get_string('test_connection_btn'), self.get_string('test_connection_success'), parent=parent_win)
+        except Exception as e:
+            messagebox.showerror(self.get_string('test_connection_btn'), self.get_string('test_connection_failed_db', error=e), parent=parent_win)
+
+class MenuPrincipalWindow(tb.Toplevel):
+    def __init__(self, master, db_config):
+        super().__init__(master) # Passa o 'master' para o construtor do Toplevel
+        self.db_config = db_config
+        self.master = master
         self.current_language = self.db_config.get('language', 'portugues')
         self.set_localized_title()
         self.geometry("600x400")
@@ -2150,44 +2340,19 @@ class MainMenu(tb.Window):
         x, y = (sw // 2) - (w // 2), (sh // 2) - (h // 2)
         self.geometry(f"{w}x{h}+{x}+{y}")
         self.open_windows = {}
+
         self.create_menu()
         self.create_widgets()
-
+    
     def get_string(self, key, **kwargs):
         return LANGUAGES.get(self.current_language, LANGUAGES['portugues']).get(key, f"_{key}_").format(**kwargs)
 
     def set_localized_title(self):
         self.title(self.get_string('main_menu_title'))
 
-    # ATUALIZADO: Função para carregar e decodificar o arquivo de configuração
-    def load_db_config(self):
-        config_path = 'db_config.json'
-        if os.path.exists(config_path) and os.path.getsize(config_path) > 0:
-            try:
-                with open(config_path, 'rb') as f: # Abrir em modo binário 'rb'
-                    encoded_data = f.read()
-                    decoded_data = base64.b64decode(encoded_data)
-                    self.db_config = json.loads(decoded_data)
-            except (json.JSONDecodeError, base64.binascii.Error, Exception) as e:
-                print(f"Erro ao ler ou decodificar o arquivo de configuração: {e}")
-                # Se houver erro (ex: arquivo corrompido ou em texto plano), cria um backup e começa com config vazia
-                if os.path.exists(config_path):
-                    os.rename(config_path, f"{config_path}.bak")
-                self.db_config = {}
-        else:
-            self.db_config = {}
-
     def get_db_connection(self):
-        if not all(self.db_config.get(k) for k in ['host', 'porta', 'banco', 'usuário', 'senha']):
-            messagebox.showerror(self.get_string("db_conn_incomplete"), self.get_string("db_conn_incomplete"), parent=self)
-            return None
-        try:
-            conn_params = get_connection_params(self.db_config)
-            return psycopg2.connect(**conn_params)
-        except Exception as e:
-            messagebox.showerror(self.get_string("test_connection_btn"), self.get_string('test_connection_failed_db', error=e), parent=self)
-            return None
-    
+        return self.master.get_db_connection()
+
     def create_widgets(self):
         main_frame = tb.Frame(self, padding=(20, 20))
         main_frame.pack(fill=BOTH, expand=YES)
@@ -2201,12 +2366,11 @@ class MainMenu(tb.Window):
     def create_menu(self):
         self.menubar = tb.Menu(self)
         config_menu = tb.Menu(self.menubar, tearoff=0)
-        config_menu.add_command(label=self.get_string('menu_db_config'), command=self.open_configure_db_window)
+        config_menu.add_command(label=self.get_string('menu_db_config'), command=lambda: self.master.open_configure_db_window(self))
         config_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self, self.db_config, self.refresh_main_pcp_comboboxes))
         self.menubar.add_cascade(label=self.get_string('menu_settings'), menu=config_menu)
         self.config(menu=self.menubar)
     
-    # Função para ser chamada como callback e atualizar a janela PCP
     def refresh_main_pcp_comboboxes(self):
         if 'pcp' in self.open_windows and self.open_windows['pcp'].winfo_exists():
             self.open_windows['pcp'].load_all_combobox_data()
@@ -2234,95 +2398,13 @@ class MainMenu(tb.Window):
             
     def on_window_close(self, window_key):
         if window_key in self.open_windows:
-            self.open_windows[window_key].destroy()
+            if self.open_windows[window_key].winfo_exists():
+                self.open_windows[window_key].destroy()
             del self.open_windows[window_key]
 
-    def open_configure_db_window(self):
-        win = Toplevel(self)
-        win.title(self.get_string('config_win_title'))
-        win.transient(self)
-        win.grab_set()
-        
-        frame = tb.Frame(win, padding=10)
-        frame.pack(expand=True, fill=BOTH)
-
-        labels = [("host", 'host_label'), ("porta", 'port_label'), ("usuário", 'user_label'), ("senha", 'password_label'), ("banco", 'db_label'), ("tabela", 'table_label')]
-        entries = {}
-        for i, (key, label_key) in enumerate(labels):
-            tb.Label(frame, text=self.get_string(label_key) + ":").grid(row=i, column=0, padx=10, pady=5, sticky="w")
-            e = tb.Entry(frame, show='*' if key == "senha" else '')
-            e.grid(row=i, column=1, padx=10, pady=5, sticky="ew")
-            e.insert(0, self.db_config.get(key, ''))
-            entries[key] = e
-        
-        tb.Label(frame, text=self.get_string('language_label') + ":").grid(row=len(labels), column=0, padx=10, pady=5, sticky="w")
-        lang_opts = [lang.capitalize() for lang in LANGUAGES.keys()]
-        lang_selector = tb.Combobox(frame, values=lang_opts, state="readonly")
-        lang_selector.grid(row=len(labels), column=1, padx=10, pady=5, sticky="ew")
-        lang_selector.set(self.current_language.capitalize())
-
-        frame.columnconfigure(1, weight=1)
-        
-        btn_frame = tb.Frame(frame)
-        btn_frame.grid(row=len(labels) + 1, columnspan=2, pady=15)
-        tb.Button(btn_frame, text=self.get_string('test_connection_btn'), bootstyle="info-outline", command=lambda: self.test_db_connection(entries, win)).pack(side="left", padx=5)
-        tb.Button(btn_frame, text=self.get_string('save_btn'), bootstyle="success", command=lambda: self.save_and_close_config(entries, lang_selector, win)).pack(side="left", padx=5)
-
-    # ATUALIZADO: Função para salvar o arquivo de configuração de forma codificada
-    def save_and_close_config(self, entries, lang_selector, win):
-        new_config = {k: v.get() for k, v in entries.items()}
-        new_lang = lang_selector.get().lower()
-        new_config['language'] = new_lang
-        
-        try:
-            # Converte o dicionário para uma string JSON, depois para bytes e codifica
-            config_json = json.dumps(new_config, indent=4)
-            encoded_data = base64.b64encode(config_json.encode('utf-8'))
-            
-            with open('db_config.json', 'wb') as f: # Abrir em modo binário 'wb'
-                f.write(encoded_data)
-                
-            # Atualiza a configuração em memória
-            self.db_config = new_config
-            messagebox.showinfo(self.get_string('save_btn'), self.get_string('config_save_success'), parent=win)
-
-        except Exception as e:
-            messagebox.showerror(self.get_string('save_btn'), self.get_string('config_save_error', error=e), parent=win)
-        
-        if self.current_language != new_lang:
-            self.current_language = new_lang
-            for widget in self.winfo_children():
-                widget.destroy()
-            self.create_menu()
-            self.create_widgets()
-            self.set_localized_title()
-
-        win.destroy()
-    
-    def test_db_connection(self, entries, parent_win):
-        test_config = {k: v.get() for k, v in entries.items()}
-        if not all(test_config.get(k) for k in ['host', 'porta', 'banco', 'usuário', 'senha']):
-            messagebox.showwarning(self.get_string('test_connection_btn'), self.get_string('test_connection_warning_fill_fields'), parent=parent_win)
-            return
-        
-        conn_params = get_connection_params(test_config)
-        try:
-            with psycopg2.connect(**conn_params):
-                messagebox.showinfo(self.get_string('test_connection_btn'), self.get_string('test_connection_success'), parent=parent_win)
-        except Exception as e:
-            messagebox.showerror(self.get_string('test_connection_btn'), self.get_string('test_connection_failed_db', error=e), parent=parent_win)
-
-
 # ==============================================================================
-# 7. PONTO DE ENTRADA DA APLICAÇÃO
+# PONTO DE ENTRADA DA APLICAÇÃO (MODIFICADO)
 # ==============================================================================
 if __name__ == "__main__":
-    main_app = MainMenu()
-    main_app.mainloop()
-
-
-# =============================================================================
-# DESENVOLVIDO POR CLAYTON ALMEIDA
-#
-#
-# =============================================================================
+    login_app = LoginWindow()
+    login_app.mainloop()
