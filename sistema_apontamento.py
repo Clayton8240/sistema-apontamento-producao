@@ -21,7 +21,7 @@ import bcrypt
 LANGUAGES = {
     'portugues': {
         # Títulos de Janelas e Abas
-        'app_title': 'Sistema de Apontamento de Produção',
+        'app_title': 'GERENCIAMentor',
         'main_menu_title': 'Menu Principal - Sistema de Produção',
         'stop_tracking_window_title': 'Apontamento de Parada em Tempo Real',
         'config_win_title': 'Configurações do Banco de Dados',
@@ -231,7 +231,7 @@ LANGUAGES = {
     },
     'english': {
       # Window and Tab Titles
-        'app_title': 'Production Tracking System',
+        'app_title': 'GERENCIAMentor',
         'main_menu_title': 'Main Menu - Production System',
         'stop_tracking_window_title': 'Real-Time Stop Tracking',
         'config_win_title': 'Database Settings',
@@ -687,7 +687,7 @@ class RealTimeStopWindow(Toplevel):
         self.stop_callback = stop_callback
 
         self.title(self.master.get_string('stop_tracking_window_title'))
-        self.geometry("500x250")
+        self.geometry("500x300") # Aumentei um pouco a altura
         self.transient(master)
         self.grab_set()
 
@@ -708,15 +708,25 @@ class RealTimeStopWindow(Toplevel):
         
         tb.Label(main_frame, text=self.get_string('stop_reason_label'), font=("Helvetica", 10)).pack(pady=(0, 5))
         self.motivo_combobox = tb.Combobox(main_frame, state="readonly")
-        self.motivo_combobox.pack(fill=X, pady=(0, 20))
+        self.motivo_combobox.pack(fill=X, pady=(0, 10))
         self.motivo_combobox.bind("<<ComboboxSelected>>", self.on_reason_selected)
 
-        tb.Label(main_frame, text=self.get_string('stop_time_label'), font=("Helvetica", 10)).pack(pady=(10, 5))
-        self.timer_label = tb.Label(main_frame, text="00:00:00", font=("Helvetica", 20, "bold"), bootstyle=DANGER)
+        # --- WIDGETS PARA "OUTROS" ---
+        # Criamos os widgets aqui, mas eles serão exibidos apenas quando necessário
+        self.other_reason_label = tb.Label(main_frame, text=self.get_string('other_motives_label') + ":", font=("Helvetica", 10))
+        self.other_reason_entry = tb.Entry(main_frame)
+        
+        # Frame para o timer e o botão, para mantê-los juntos
+        timer_button_frame = tb.Frame(main_frame)
+        timer_button_frame.pack(fill=X, pady=(10,0))
+        
+        tb.Label(timer_button_frame, text=self.get_string('stop_time_label'), font=("Helvetica", 10)).pack()
+        self.timer_label = tb.Label(timer_button_frame, text="00:00:00", font=("Helvetica", 20, "bold"), bootstyle=DANGER)
         self.timer_label.pack()
 
-        self.finish_button = tb.Button(main_frame, text=self.get_string('finish_stop_btn'), bootstyle="danger", state=DISABLED, command=self.finish_stop)
-        self.finish_button.pack(pady=20, ipadx=10, ipady=5)
+        self.finish_button = tb.Button(timer_button_frame, text=self.get_string('finish_stop_btn'), bootstyle="danger", state=DISABLED, command=self.finish_stop)
+        self.finish_button.pack(pady=(10,0), ipadx=10, ipady=5)
+
 
     def get_db_connection(self):
         return self.master.get_db_connection()
@@ -737,8 +747,24 @@ class RealTimeStopWindow(Toplevel):
             if conn: conn.close()
 
     def on_reason_selected(self, event=None):
-        if self.motivo_combobox.get():
+        selected_reason = self.motivo_combobox.get()
+        
+        # Lógica para mostrar/ocultar widgets - AGORA CORRIGIDA
+        # Usamos o método .lower() para ser à prova de "Outros" vs "outros"
+        if selected_reason and selected_reason.lower() == 'outros':
+            self.other_reason_label.pack(fill=X, pady=(10, 0), before=self.timer_label.master)
+            self.other_reason_entry.pack(fill=X, before=self.timer_label.master)
+            self.other_reason_entry.focus()
+        else:
+            self.other_reason_entry.delete(0, END) # Limpa o campo antes de esconder
+            self.other_reason_label.pack_forget()
+            self.other_reason_entry.pack_forget()
+
+        # Habilita o botão de finalizar
+        if selected_reason:
             self.finish_button.config(state=NORMAL)
+        else:
+            self.finish_button.config(state=DISABLED)
 
     def update_timer(self):
         elapsed = datetime.now() - self.start_time
@@ -756,17 +782,24 @@ class RealTimeStopWindow(Toplevel):
         selected_motivo_text = self.motivo_combobox.get()
         motivo_id = next((opt[1] for opt in self.motivos_parada_options if opt[0] == selected_motivo_text), None)
 
+        extra_detail = None
+        if selected_motivo_text and selected_motivo_text.lower() == 'outros':
+            extra_detail = self.other_reason_entry.get().strip()
+            if not extra_detail:
+                messagebox.showwarning("Campo Obrigatório", "Por favor, especifique o motivo da parada.", parent=self)
+                self.update_timer() # Reinicia o timer para não perder tempo
+                return
+        
         stop_data = {
             "motivo_text": selected_motivo_text,
             "motivo_id": motivo_id,
             "hora_inicio_parada": self.start_time.time(),
             "hora_fim_parada": end_time.time(),
-            "motivo_extra_detail": None
+            "motivo_extra_detail": extra_detail
         }
         
         self.stop_callback(stop_data)
         self.destroy()
-
 class ServiceManagerWindow(Toplevel):
     def __init__(self, master, db_config, ordem_id, wo_number, refresh_callback=None):
         super().__init__(master)
@@ -1097,7 +1130,7 @@ class PCPWindow(Toplevel):
             "equipamento": {"label_key": "equipment_label", "widget": "Combobox", "lookup": "equipamentos_tipos"}, "qtde_cores": {"label_key": "col_qtde_cores", "widget": "Combobox", "lookup": "qtde_cores_tipos"},
             "tipo_papel": {"label_key": "col_tipo_papel", "widget": "Combobox", "lookup": "tipos_papel"}, "gramatura": {"label_key": "col_gramatura", "widget": "Combobox", "lookup": "gramaturas_tipos"},
             "formato": {"label_key": "col_formato", "widget": "Combobox", "lookup": "formatos_tipos"}, "fsc": {"label_key": "col_fsc", "widget": "Combobox", "lookup": "fsc_tipos"},
-            "acabamento": {"label_key": "Acabamento", "widget": "Text"},
+            "acabamento": {"label_key": "Acabamento", "widget": "Listbox"},
         }
         self.widgets = {}
         self.giros_map = {}
@@ -1142,8 +1175,18 @@ class PCPWindow(Toplevel):
         
         acab_config = self.fields_config["acabamento"]
         tb.Label(form_frame, text=self.get_string(acab_config["label_key"]) + ":").grid(row=0, column=4, padx=5, pady=5, sticky=NW)
-        acab_widget = tb.Text(form_frame, height=8, width=40)
-        acab_widget.grid(row=0, column=5, rowspan=6, padx=5, pady=5, sticky="nsew")
+
+        # Frame para a Listbox e a Scrollbar
+        acab_frame = tb.Frame(form_frame)
+        acab_frame.grid(row=0, column=5, rowspan=6, padx=5, pady=5, sticky="nsew")
+
+        acab_scrollbar = tb.Scrollbar(acab_frame)
+        acab_scrollbar.pack(side=RIGHT, fill=Y)
+
+        acab_widget = Listbox(acab_frame, selectmode="multiple", yscrollcommand=acab_scrollbar.set, exportselection=False)
+        acab_widget.pack(expand=True, fill=BOTH)
+        acab_scrollbar.config(command=acab_widget.yview)
+
         self.widgets["acabamento"] = acab_widget
         
         form_frame.grid_columnconfigure(1, weight=1)
@@ -1204,6 +1247,10 @@ class PCPWindow(Toplevel):
     def create_widget_from_config(self, parent, config):
         if config["widget"] == "Combobox": return tb.Combobox(parent, state="readonly")
         elif config["widget"] == "DateEntry": return DateEntry(parent, dateformat='%d/%m/%Y')
+        elif config["widget"] == "Listbox":
+            # A criação da Listbox agora é manual dentro de create_widgets,
+            # então aqui podemos apenas retornar None ou um placeholder.
+            return None 
         else: return tb.Entry(parent)
 
     def on_tree_select(self, event=None):
@@ -1288,9 +1335,11 @@ class PCPWindow(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
+                # Carrega o mapa de giros
                 cur.execute('SELECT descricao, giros FROM qtde_cores_tipos')
                 self.giros_map = {desc: giros if giros is not None else 1 for desc, giros in cur.fetchall()}
                 
+                # Itera sobre os widgets para popular os COMBOBOXES
                 schemas = LookupTableManagerWindow.lookup_table_schemas
                 for key, widget in self.widgets.items():
                     if isinstance(widget, tb.Combobox):
@@ -1314,20 +1363,45 @@ class PCPWindow(Toplevel):
                                 cur.execute(f'SELECT DISTINCT "{db_col}" FROM {schema_info["table"]} ORDER BY "{db_col}"')
                                 values = [str(row[0]) for row in cur.fetchall()]
                                 widget['values'] = values
+                
+                # --- CORREÇÃO AQUI ---
+                # O código abaixo agora está no lugar certo: DENTRO do 'try' e DEPOIS do loop dos comboboxes.
+                
+                # NOVO: Carregar dados para a Listbox de Acabamentos
+                if "acabamento" in self.widgets and isinstance(self.widgets["acabamento"], Listbox):
+                    acab_widget = self.widgets["acabamento"]
+                    acab_widget.delete(0, END)  # Limpa a lista antes de carregar
+
+                    schema_info_acab = LookupTableManagerWindow.lookup_table_schemas["acabamentos_tipos"]
+                    
+                    # Vamos buscar ID e Descrição juntos para criar o mapa
+                    cur.execute(f'SELECT id, descricao FROM {schema_info_acab["table"]} ORDER BY descricao')
+                    
+                    self.acabamentos_map = {}  # Dicionário para mapear descrição -> id
+                    for acab_id, desc in cur.fetchall():
+                        acab_widget.insert(END, desc)
+                        self.acabamentos_map[desc] = acab_id
 
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao carregar dados para os comboboxes: {e}", parent=self)
         finally:
             if conn: conn.close()
-
     def save_new_ordem(self):
         data = {}
         self.widgets["giros_previstos"].config(state=NORMAL)
         for key, widget in self.widgets.items():
+            if key == "acabamento": continue # Trataremos o acabamento separadamente
             if isinstance(widget, DateEntry): data[key] = widget.entry.get() or None
             elif isinstance(widget, tb.Text): data[key] = widget.get("1.0", "end-1c").strip()
-            else: data[key] = widget.get().strip()
+            elif widget: data[key] = widget.get().strip()
         self.widgets["giros_previstos"].config(state=DISABLED)
+        
+        # Pega os acabamentos selecionados
+        selected_indices = self.widgets["acabamento"].curselection()
+        selected_acabamentos_desc = [self.widgets["acabamento"].get(i) for i in selected_indices]
+        
+        # O campo `acabamento` na tabela `ordem_producao` pode ser usado para um resumo em texto.
+        data['acabamento'] = ', '.join(selected_acabamentos_desc)
 
         if not data["numero_wo"]:
             messagebox.showwarning(self.get_string("required_field_warning", field_name=self.get_string("col_wo")), parent=self)
@@ -1337,20 +1411,35 @@ class PCPWindow(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
-                cols_to_save = list(self.fields_config.keys())
+                # Insere a ordem de produção principal
+                cols_to_save = [k for k in self.fields_config.keys() if k in data]
                 non_empty_data = {col: data[col] for col in cols_to_save if data[col]}
-                if 'data_previsao_entrega' in non_empty_data:
+                if 'data_previsao_entrega' in non_empty_data and non_empty_data['data_previsao_entrega']:
                     non_empty_data['data_previsao_entrega'] = datetime.strptime(non_empty_data['data_previsao_entrega'], '%d/%m/%Y').date()
+                
                 cols = non_empty_data.keys()
-                query = f""" INSERT INTO ordem_producao ({', '.join(f'"{c}"' for c in cols)}, status) VALUES ({', '.join([f'%({c})s' for c in cols])}, 'Em Aberto') """
+                query = f""" INSERT INTO ordem_producao ({', '.join(f'"{c}"' for c in cols)}, status) 
+                            VALUES ({', '.join([f'%({c})s' for c in cols])}, 'Em Aberto') RETURNING id """
                 cur.execute(query, non_empty_data)
+                ordem_id = cur.fetchone()[0] # Pega o ID da ordem recém-criada
+
+                # Insere os acabamentos na tabela de ligação
+                if ordem_id and selected_acabamentos_desc:
+                    acabamento_ids_to_insert = [self.acabamentos_map[desc] for desc in selected_acabamentos_desc]
+                    for acab_id in acabamento_ids_to_insert:
+                        cur.execute("INSERT INTO ordem_producao_acabamentos (ordem_id, acabamento_id) VALUES (%s, %s)", (ordem_id, acab_id))
+
             conn.commit()
             messagebox.showinfo("Sucesso", self.get_string('order_save_success'), parent=self)
             self.clear_fields()
             self.load_ordens()
-        except psycopg2.IntegrityError:
+        except psycopg2.IntegrityError as e:
             conn.rollback()
-            messagebox.showerror("Erro de Integridade", self.get_string('integrity_error_wo', wo=data['numero_wo']), parent=self)
+            # Verificando se o erro é de chave única na WO
+            if 'ordem_producao_numero_wo_key' in str(e):
+                 messagebox.showerror("Erro de Integridade", self.get_string('integrity_error_wo', wo=data.get('numero_wo', '')), parent=self)
+            else:
+                messagebox.showerror("Erro de Integridade", f"Não foi possível salvar. Verifique se os dados estão corretos.\nDetalhes: {e}", parent=self)
         except (psycopg2.Error, ValueError) as e:
             conn.rollback()
             messagebox.showerror("Erro ao Salvar", self.get_string('save_order_error', error=e), parent=self)
@@ -1363,7 +1452,8 @@ class PCPWindow(Toplevel):
             if isinstance(widget, tb.Combobox): widget.set('')
             elif isinstance(widget, DateEntry): widget.entry.delete(0, END)
             elif isinstance(widget, tb.Text): widget.delete("1.0", END)
-            else: widget.delete(0, END)
+            elif isinstance(widget, Listbox): widget.selection_clear(0, END) # Limpa a seleção
+            elif widget: widget.delete(0, END) # Para Entry
         self.widgets["giros_previstos"].config(state=DISABLED)
 
     def export_to_xlsx(self):
@@ -1614,6 +1704,8 @@ class ViewAppointmentsWindow(Toplevel):
             messagebox.showerror("Erro", self.get_string("export_error", error=e), parent=self)
 
 class App(Toplevel):
+    STATE_FILE = 'session_state.json' # Ficheiro para guardar o estado
+
     def __init__(self, master, db_config):
         super().__init__(master)
         self.master = master
@@ -1623,6 +1715,7 @@ class App(Toplevel):
         self.set_localized_title()
         self.geometry("1200x850")
 
+        # Variáveis de estado
         self.current_state = 'IDLE'
         self.setup_start_time, self.setup_end_time = None, None
         self.prod_start_time, self.prod_end_time = None, None
@@ -1631,23 +1724,472 @@ class App(Toplevel):
         self.selected_ordem_id, self.selected_servico_id, self.setup_id = None, None, None
         self.open_wos_data, self.pending_services_data = {}, {}
         self.motivos_perda_data = {}
-        
         self.giros_map = {}
-
         self.initial_fields, self.setup_fields, self.production_fields, self.info_labels = {}, {}, {}, {}
         
         self.create_widgets()
         self.load_initial_data()
-        self.update_ui_state()
+        
+        self.after(100, self.check_and_restore_state)
+        self.periodic_save()
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
 
     def get_string(self, key, **kwargs):
         lang_dict = LANGUAGES.get(self.master.current_language, LANGUAGES.get('portugues', {}))
-        default_text = key.replace('_', ' ').capitalize()
-        return lang_dict.get(key, default_text).format(**kwargs)
+        return lang_dict.get(key, f"_{key}_").format(**kwargs)
 
     def set_localized_title(self):
         self.title(self.get_string('btn_production_entry'))
+        
+    def save_state(self):
+        if self.current_state == 'IDLE':
+            if os.path.exists(self.STATE_FILE):
+                try:
+                    os.remove(self.STATE_FILE)
+                except OSError as e:
+                    print(f"Erro ao remover ficheiro de estado: {e}")
+            return
 
+        def time_to_str(t):
+            return t.strftime('%H:%M:%S.%f') if t else None
+
+        serializable_stops = []
+        for stop in self.all_stops_data:
+            s_copy = stop.copy()
+            s_copy['hora_inicio_parada'] = time_to_str(s_copy.get('hora_inicio_parada'))
+            s_copy['hora_fim_parada'] = time_to_str(s_copy.get('hora_fim_parada'))
+            serializable_stops.append(s_copy)
+
+        state_data = {
+            'current_state': self.current_state,
+            'selected_wo_text': self.wo_combobox.get(),
+            'selected_service_text': self.service_combobox.get(),
+            'selected_impressor': self.initial_fields['impressor'].get(),
+            'selected_turno': self.initial_fields['turno'].get(),
+            'setup_start_time': self.setup_start_time.isoformat() if self.setup_start_time else None,
+            'setup_end_time': self.setup_end_time.isoformat() if self.setup_end_time else None,
+            'prod_start_time': self.prod_start_time.isoformat() if self.prod_start_time else None,
+            'prod_end_time': self.prod_end_time.isoformat() if self.prod_end_time else None,
+            'all_stops_data': serializable_stops,
+            'setup_fields': {key: widget.get() for key, widget in self.setup_fields.items()},
+            'production_fields': {key: widget.get() for key, widget in self.production_fields.items() if isinstance(widget, tb.Entry)},
+            'production_fields_combo': self.production_fields['motivo_perda'].get(),
+            'setup_id': self.setup_id,
+            'selected_ordem_id': self.selected_ordem_id,
+            'selected_servico_id': self.selected_servico_id
+        }
+        try:
+            with open(self.STATE_FILE, 'w', encoding='utf-8') as f:
+                json.dump(state_data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"Erro ao salvar estado da sessão: {e}")
+
+    def check_and_restore_state(self):
+        if not os.path.exists(self.STATE_FILE) or os.path.getsize(self.STATE_FILE) == 0:
+            self.update_ui_state()
+            return
+        try:
+            with open(self.STATE_FILE, 'r', encoding='utf-8') as f:
+                state_data = json.load(f)
+            
+            if not state_data or state_data.get('current_state') == 'IDLE':
+                 if os.path.exists(self.STATE_FILE): os.remove(self.STATE_FILE)
+                 return
+
+            if messagebox.askyesno("Restaurar Sessão", "Encontrámos um apontamento não finalizado. Deseja restaurá-lo?"):
+                self.load_state(state_data)
+            else:
+                 if os.path.exists(self.STATE_FILE): os.remove(self.STATE_FILE)
+        except (json.JSONDecodeError, Exception) as e:
+            print(f"Erro ao restaurar estado: {e}")
+            if os.path.exists(self.STATE_FILE):
+                os.remove(self.STATE_FILE)
+        finally:
+            self.update_ui_state()
+
+    def load_state(self, state):
+        try:
+            self.current_state = state.get('current_state', 'IDLE')
+            self.setup_id = state.get('setup_id')
+            self.selected_ordem_id = state.get('selected_ordem_id')
+            self.selected_servico_id = state.get('selected_servico_id')
+            
+            self.wo_combobox.set(state.get('selected_wo_text', ''))
+            self.on_wo_selected(restoring=True)
+            self.service_combobox.set(state.get('selected_service_text', ''))
+            self.impressor_combobox.set(state.get('selected_impressor', ''))
+            self.turno_combobox.set(state.get('selected_turno', ''))
+            
+            for key, value in state.get('setup_fields', {}).items():
+                if key in self.setup_fields: self.setup_fields[key].insert(0, value)
+            for key, value in state.get('production_fields', {}).items():
+                if key in self.production_fields and isinstance(self.production_fields[key], tb.Entry): self.production_fields[key].insert(0, value)
+            self.production_fields['motivo_perda'].set(state.get('production_fields_combo', ''))
+            
+            def str_to_time(t_str):
+                return datetime.strptime(t_str, '%H:%M:%S.%f').time() if t_str else None
+                
+            self.all_stops_data = []
+            for stop_data_str in state.get('all_stops_data', []):
+                s_copy = stop_data_str.copy()
+                s_copy['hora_inicio_parada'] = str_to_time(s_copy.get('hora_inicio_parada'))
+                s_copy['hora_fim_parada'] = str_to_time(s_copy.get('hora_fim_parada'))
+                self.all_stops_data.append(s_copy)
+            self.refresh_stops_tree()
+            
+            def load_datetime_from_iso(iso_str):
+                return datetime.fromisoformat(iso_str) if iso_str else None
+                
+            self.setup_start_time = load_datetime_from_iso(state.get('setup_start_time'))
+            self.setup_end_time = load_datetime_from_iso(state.get('setup_end_time'))
+            self.prod_start_time = load_datetime_from_iso(state.get('prod_start_time'))
+            self.prod_end_time = load_datetime_from_iso(state.get('prod_end_time'))
+
+            self.update_setup_timer()
+            self.update_prod_timer()
+
+        except Exception as e:
+            messagebox.showerror("Erro de Restauração", f"Falha ao carregar dados da sessão anterior: {e}")
+            self.reset_state()
+
+    def periodic_save(self):
+        self.save_state()
+        self.after(30000, self.periodic_save)
+
+    def on_close(self):
+        if self.current_state != 'IDLE':
+            self.save_state()
+        self.destroy()
+        
+    def reset_state(self):
+        self.current_state = 'IDLE'
+        self.setup_start_time, self.setup_end_time = None, None
+        self.prod_start_time, self.prod_end_time = None, None
+        if self.setup_timer_job: self.after_cancel(self.setup_timer_job)
+        if self.prod_timer_job: self.after_cancel(self.prod_timer_job)
+        self.all_stops_data = []
+        self.selected_ordem_id, self.selected_servico_id, self.setup_id = None, None, None
+        
+        for widget in self.initial_fields.values(): widget.set('')
+        for widget in self.setup_fields.values(): widget.delete(0, END)
+        for widget in self.production_fields.values():
+            if isinstance(widget, tb.Entry): widget.delete(0, END)
+            elif isinstance(widget, tb.Combobox): widget.set('')
+        
+        self.refresh_stops_tree()
+        self.update_wo_info_panel()
+        self.update_ui_state()
+        
+        if os.path.exists(self.STATE_FILE):
+            os.remove(self.STATE_FILE)
+
+    def on_wo_selected(self, event=None, restoring=False):
+        if not restoring:
+            self.reset_state()
+            
+        self.service_combobox.set('')
+        self.service_combobox.config(state='disabled')
+        self.pending_services_data = {}
+        
+        selected_wo_text = self.wo_combobox.get()
+        if not selected_wo_text: 
+            self.selected_ordem_id = None
+            self.update_wo_info_panel()
+            self.update_ui_state()
+            return
+
+        wo_data = self.open_wos_data.get(selected_wo_text)
+        if not wo_data: return
+        
+        self.selected_ordem_id = wo_data['id']
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, descricao FROM ordem_servicos WHERE ordem_id = %s AND status = 'Pendente' ORDER BY sequencia", (self.selected_ordem_id,))
+                services = cur.fetchall()
+                if services:
+                    service_list = [f"{service_id}: {desc}" for service_id, desc in services]
+                    self.pending_services_data = {f"{service_id}: {desc}": service_id for service_id, desc in services}
+                    self.service_combobox['values'] = service_list
+                    self.service_combobox.config(state='readonly')
+                    if not restoring: self.service_combobox.set('')
+                else:
+                    self.service_combobox['values'] = []
+                    self.service_combobox.set(self.get_string('no_pending_services'))
+        except psycopg2.Error as e:
+            messagebox.showerror("Erro", f"Falha ao carregar etapas da WO: {e}", parent=self)
+        finally:
+            if conn: conn.close()
+        
+        self.update_wo_info_panel()
+        self.update_ui_state()
+        
+        if not restoring:
+            self.save_state()
+
+    def toggle_setup(self):
+        if self.current_state == 'IDLE':
+            if not self.service_combobox.get() or not self.impressor_combobox.get() or not self.turno_combobox.get() or self.service_combobox.get() == self.get_string('no_pending_services'):
+                messagebox.showwarning("Seleção Incompleta", "Selecione WO, Etapa, Impressor e Turno para iniciar.")
+                return
+            
+            selected_service_text = self.service_combobox.get()
+            self.selected_servico_id = self.pending_services_data.get(selected_service_text)
+            if not self.selected_servico_id:
+                messagebox.showerror("Erro", f"Não foi possível encontrar o ID para a etapa: {selected_service_text}")
+                return
+
+            self.current_state = 'SETUP_RUNNING'
+            self.setup_start_time = datetime.now()
+            self.update_setup_timer()
+            
+        elif self.current_state == 'SETUP_RUNNING':
+            self.setup_end_time = datetime.now()
+            if self.setup_timer_job: self.after_cancel(self.setup_timer_job)
+            self.update_setup_timer() # Atualiza a label uma última vez com o tempo final
+            
+            if not self.validate_and_save_setup():
+                self.setup_end_time = None
+                self.update_setup_timer() # Reinicia o timer se a validação falhar
+                return
+            self.current_state = 'PRODUCTION_READY'
+
+        self.update_ui_state()
+        self.save_state()
+
+    def toggle_production(self):
+        if self.current_state == 'PRODUCTION_READY':
+            self.current_state = 'PRODUCTION_RUNNING'
+            self.prod_start_time = datetime.now()
+            self.update_prod_timer()
+        elif self.current_state == 'PRODUCTION_RUNNING':
+            self.current_state = 'FINISHED'
+            self.prod_end_time = datetime.now()
+            if self.prod_timer_job: self.after_cancel(self.prod_timer_job)
+            self.update_prod_timer() # Atualiza a label com o tempo final
+
+        self.update_ui_state()
+        self.save_state()
+    
+    def validate_and_save_setup(self):
+        data = {key: widget.get().strip() for key, widget in self.setup_fields.items()}
+        for key, value in data.items():
+            if not value:
+                messagebox.showerror("Campos Obrigatórios", self.get_string('setup_fields_required'))
+                return False
+        
+        conn = self.get_db_connection()
+        if not conn: return False
+        try:
+            with conn.cursor() as cur:
+                params = (
+                    self.setup_start_time.date(),
+                    self.setup_start_time,
+                    self.setup_end_time,
+                    int(data['perdas']),
+                    int(data['malas']),
+                    int(data['total_lavagens']),
+                    data['numero_inspecao']
+                )
+
+                if self.setup_id: # UPDATE
+                    query = "UPDATE apontamento_setup SET data_apontamento=%s, hora_inicio=%s, hora_fim=%s, perdas=%s, malas=%s, total_lavagens=%s, numero_inspecao=%s WHERE id=%s"
+                    cur.execute(query, params + (self.setup_id,))
+                    cur.execute("DELETE FROM paradas_setup WHERE setup_id = %s", (self.setup_id,))
+                
+                else: # INSERT
+                    query = "INSERT INTO apontamento_setup (servico_id, data_apontamento, hora_inicio, hora_fim, perdas, malas, total_lavagens, numero_inspecao) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"
+                    cur.execute(query, (self.selected_servico_id,) + params)
+                    self.setup_id = cur.fetchone()[0]
+
+                for stop in self.all_stops_data:
+                    if stop.get('type') == 'Setup':
+                        cur.execute("INSERT INTO paradas_setup (setup_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s)",
+                            (self.setup_id, stop.get('motivo_id'), stop.get('hora_inicio_parada'), stop.get('hora_fim_parada'), stop.get('motivo_extra_detail')))
+            
+            conn.commit()
+            messagebox.showinfo("Sucesso", self.get_string('setup_saved_success'))
+            return True
+            
+        except (psycopg2.Error, ValueError) as e:
+            conn.rollback()
+            messagebox.showerror("Erro", self.get_string('setup_save_failed', error=e))
+            return False
+        finally:
+            if conn: conn.close()
+
+    def update_setup_timer(self):
+        if self.setup_start_time:
+            if self.current_state == 'SETUP_RUNNING' and not self.setup_end_time:
+                elapsed = datetime.now() - self.setup_start_time
+                self.setup_timer_label.config(text=str(elapsed).split('.')[0])
+                self.setup_timer_job = self.after(1000, self.update_setup_timer)
+            elif self.setup_end_time:
+                elapsed = self.setup_end_time - self.setup_start_time
+                self.setup_timer_label.config(text=str(elapsed).split('.')[0])
+        else:
+            self.setup_timer_label.config(text="00:00:00")
+            
+    def update_prod_timer(self):
+        if self.prod_start_time:
+            if self.current_state == 'PRODUCTION_RUNNING' and not self.prod_end_time:
+                elapsed = datetime.now() - self.prod_start_time
+                self.prod_timer_label.config(text=str(elapsed).split('.')[0])
+                self.prod_timer_job = self.after(1000, self.update_prod_timer)
+            elif self.prod_end_time:
+                elapsed = self.prod_end_time - self.prod_start_time
+                self.prod_timer_label.config(text=str(elapsed).split('.')[0])
+        else:
+            self.prod_timer_label.config(text="00:00:00")
+
+    def refresh_stops_tree(self):
+        for item in self.stops_tree.get_children(): self.stops_tree.delete(item)
+        for stop in self.all_stops_data:
+            start = stop.get('hora_inicio_parada')
+            end = stop.get('hora_fim_parada')
+            start_str = start.strftime('%H:%M:%S') if start else ''
+            end_str = end.strftime('%H:%M:%S') if end else ''
+            
+            duration_str = ''
+            if start and end:
+                duration = (datetime.combine(date.min, end) - datetime.combine(date.min, start))
+                total_seconds = int(duration.total_seconds())
+                hours, remainder = divmod(total_seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                duration_str = f"{hours:02}:{minutes:02}:{seconds:02}"
+            
+            motivo_display = stop.get('motivo_text', '')
+            if motivo_display and motivo_display.lower() == 'outros' and stop.get('motivo_extra_detail'):
+                motivo_display = f"Outros: {stop['motivo_extra_detail']}"
+                
+            self.stops_tree.insert('', END, values=(stop.get('type', ''), motivo_display, start_str, end_str, duration_str))
+
+    def submit_final_production(self):
+        self.production_fields['giros_rodados'].config(state=NORMAL)
+        prod_data = {key: (widget.get().strip() if isinstance(widget, (tb.Entry, tb.Combobox)) else None) for key, widget in self.production_fields.items()}
+        self.production_fields['giros_rodados'].config(state=DISABLED)
+
+        if not prod_data.get('giros_rodados') or not prod_data.get('quantidadeproduzida'):
+            messagebox.showerror("Validação", self.get_string('final_appointment_validation_error'), parent=self)
+            return
+
+        final_data = {
+            'servico_id': self.selected_servico_id,
+            'data': date.today(),
+            'horainicio': self.prod_start_time.time() if self.prod_start_time else None,
+            'horafim': self.prod_end_time.time() if self.prod_end_time else None,
+            'giros_rodados': int(prod_data['giros_rodados']) if prod_data.get('giros_rodados') else None,
+            'quantidadeproduzida': int(prod_data['quantidadeproduzida']) if prod_data.get('quantidadeproduzida') else None,
+            'perdas_producao': int(prod_data['perdas_producao']) if prod_data.get('perdas_producao') else None,
+            'motivo_perda_id': self.motivos_perda_data.get(prod_data.get('motivo_perda')),
+        }
+        
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM impressores WHERE nome = %s", (self.impressor_combobox.get(),))
+                final_data['impressor_id'] = cur.fetchone()[0]
+                cur.execute("SELECT id FROM turnos_tipos WHERE descricao = %s", (self.turno_combobox.get(),))
+                final_data['turno_id'] = cur.fetchone()[0]
+
+                cols = [f'"{k}"' for k, v in final_data.items() if v is not None]
+                vals = {k: v for k, v in final_data.items() if v is not None}
+                placeholders = [f"%({k})s" for k in vals.keys()]
+                
+                query = f"INSERT INTO apontamento ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) RETURNING id"
+                cur.execute(query, vals)
+                apontamento_id = cur.fetchone()[0]
+
+                for stop in self.all_stops_data:
+                    if stop.get('type') == 'Produção':
+                        cur.execute("INSERT INTO paradas (apontamento_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s)",
+                            (apontamento_id, stop.get('motivo_id'), stop.get('hora_inicio_parada'), stop.get('hora_fim_parada'), stop.get('motivo_extra_detail')))
+                
+                cur.execute("UPDATE ordem_servicos SET status = 'Concluído' WHERE id = %s", (self.selected_servico_id,))
+                cur.execute("SELECT COUNT(*) FROM ordem_servicos WHERE ordem_id = %s AND status = 'Pendente'", (self.selected_ordem_id,))
+                if cur.fetchone()[0] == 0:
+                    cur.execute("UPDATE ordem_producao SET status = 'Concluído' WHERE id = %s", (self.selected_ordem_id,))
+
+            conn.commit()
+            
+            if os.path.exists(self.STATE_FILE):
+                os.remove(self.STATE_FILE)
+
+            messagebox.showinfo("Sucesso", self.get_string('production_saved_success'), parent=self)
+            self.current_state = 'IDLE'
+            self.destroy()
+
+        except (psycopg2.Error, ValueError, KeyError, TypeError) as e:
+            conn.rollback()
+            messagebox.showerror("Erro ao Salvar", self.get_string('production_save_failed', error=e), parent=self)
+        finally:
+            if conn: conn.close()
+    
+    def update_setup_timer(self):
+        if self.setup_start_time:
+            if self.current_state == 'SETUP_RUNNING':
+                elapsed = datetime.now() - self.setup_start_time
+                self.setup_timer_label.config(text=str(elapsed).split('.')[0])
+                self.setup_timer_job = self.after(1000, self.update_setup_timer)
+            elif self.setup_end_time:
+                elapsed = self.setup_end_time - self.setup_start_time
+                self.setup_timer_label.config(text=str(elapsed).split('.')[0])
+        else:
+            self.setup_timer_label.config(text="00:00:00")
+            
+    def update_prod_timer(self):
+        if self.prod_start_time:
+            if self.current_state == 'PRODUCTION_RUNNING':
+                elapsed = datetime.now() - self.prod_start_time
+                self.prod_timer_label.config(text=str(elapsed).split('.')[0])
+                self.prod_timer_job = self.after(1000, self.update_prod_timer)
+            elif self.prod_end_time:
+                elapsed = self.prod_end_time - self.prod_start_time
+                self.prod_timer_label.config(text=str(elapsed).split('.')[0])
+        else:
+            self.prod_timer_label.config(text="00:00:00")
+    
+    def open_stop_window(self, stop_type):
+        callback = self.add_setup_stop if stop_type == 'setup' else self.add_prod_stop
+        RealTimeStopWindow(self, self.db_config, callback)
+
+    def add_setup_stop(self, stop_data):
+        stop_data['type'] = 'Setup'
+        self.all_stops_data.append(stop_data)
+        self.refresh_stops_tree()
+        self.save_state()
+    
+    def add_prod_stop(self, stop_data):
+        stop_data['type'] = 'Produção'
+        self.all_stops_data.append(stop_data)
+        self.refresh_stops_tree()
+        self.save_state()
+
+    def refresh_stops_tree(self):
+        for item in self.stops_tree.get_children(): self.stops_tree.delete(item)
+        for stop in self.all_stops_data:
+            start_str = stop['hora_inicio_parada'].strftime('%H:%M:%S') if stop.get('hora_inicio_parada') else ''
+            end_str = stop['hora_fim_parada'].strftime('%H:%M:%S') if stop.get('hora_fim_parada') else ''
+            
+            duration_str = ''
+            if stop.get('hora_inicio_parada') and stop.get('hora_fim_parada'):
+                duration = (datetime.combine(date.min, stop['hora_fim_parada']) - datetime.combine(date.min, stop['hora_inicio_parada']))
+                total_seconds = int(duration.total_seconds())
+                hours, remainder = divmod(total_seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                duration_str = f"{hours:02}:{minutes:02}:{seconds:02}"
+            
+            motivo_display = stop.get('motivo_text', '')
+            if motivo_display and motivo_display.lower() == 'outros' and stop.get('motivo_extra_detail'):
+                motivo_display = f"Outros: {stop['motivo_extra_detail']}"
+                
+            self.stops_tree.insert('', END, values=(stop.get('type', ''), motivo_display, start_str, end_str, duration_str))
+            
+    # Inclua aqui os métodos que não foram alterados:
+    # create_widgets, _calcular_giros_rodados, get_db_connection,
+    # load_initial_data, load_open_wos, update_wo_info_panel, update_ui_state
     def create_widgets(self):
         main_frame = tb.Frame(self, padding=10)
         main_frame.pack(fill=BOTH, expand=YES)
@@ -1836,44 +2378,6 @@ class App(Toplevel):
         finally:
             if conn: conn.close()
 
-    def on_wo_selected(self, event=None):
-        self.service_combobox.set('')
-        self.service_combobox.config(state='disabled')
-        self.pending_services_data = {}
-        self.selected_ordem_id = None
-
-        selected_wo_text = self.wo_combobox.get()
-        if not selected_wo_text: 
-            self.update_wo_info_panel()
-            self.update_ui_state()
-            return
-
-        wo_data = self.open_wos_data.get(selected_wo_text)
-        if not wo_data: return
-        
-        self.selected_ordem_id = wo_data['id']
-        conn = self.get_db_connection()
-        if not conn: return
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT id, descricao FROM ordem_servicos WHERE ordem_id = %s AND status = 'Pendente' ORDER BY sequencia", (self.selected_ordem_id,))
-                services = cur.fetchall()
-                if services:
-                    service_list = [f"{service_id}: {desc}" for service_id, desc in services]
-                    self.pending_services_data = {f"{service_id}: {desc}": service_id for service_id, desc in services}
-                    self.service_combobox['values'] = service_list
-                    self.service_combobox.config(state='readonly')
-                else:
-                    self.service_combobox['values'] = []
-                    self.service_combobox.set(self.get_string('no_pending_services'))
-        except psycopg2.Error as e:
-            messagebox.showerror("Erro", f"Falha ao carregar etapas da WO: {e}", parent=self)
-        finally:
-            if conn: conn.close()
-        
-        self.update_wo_info_panel()
-        self.update_ui_state()
-        
     def update_wo_info_panel(self):
         for label in self.info_labels.values(): label.config(text="-")
         if not self.selected_ordem_id: return
@@ -1881,7 +2385,7 @@ class App(Toplevel):
         conn = self.get_db_connection()
         if not conn: return
         try:
-            with conn.cursor() as cur:
+            with conn.cursor() as cur:            
                 info_cols = ['cliente', 'equipamento', 'tipo_papel', 'tiragem_em_folhas', 'qtde_cores', 'giros_previstos']
                 cur.execute(f"SELECT {', '.join(info_cols)} FROM ordem_producao WHERE id = %s", (self.selected_ordem_id,))
                 data = cur.fetchone()
@@ -1897,206 +2401,56 @@ class App(Toplevel):
             messagebox.showerror("Erro", f"Falha ao carregar informações da WO: {e}", parent=self)
         finally:
             if conn: conn.close()
-
+            
     def update_ui_state(self):
         state = self.current_state
-        all_widgets = list(self.initial_fields.values()) + list(self.setup_fields.values()) + list(self.production_fields.values())
-        for widget in all_widgets:
-            if widget not in [self.production_fields['giros_rodados']]:
-                widget.config(state=NORMAL if state in ['PRODUCTION_RUNNING', 'FINISHED'] else DISABLED)
+        is_idle = state == 'IDLE'
+        is_setup_running = state == 'SETUP_RUNNING'
+        is_prod_ready = state == 'PRODUCTION_READY'
+        is_prod_running = state == 'PRODUCTION_RUNNING'
+        is_finished = state == 'FINISHED'
 
-        if state == 'IDLE':
-            self.wo_combobox.config(state='readonly'); 
-            if self.wo_combobox.get(): self.service_combobox.config(state='readonly')
-            for w in self.initial_fields.values(): w.config(state='readonly')
-            if self.service_combobox.get() and self.service_combobox.get() != self.get_string('no_pending_services'):
-                self.setup_button.config(state=NORMAL, text=self.get_string('start_setup_btn'))
-            self.status_label.config(text=self.get_string('status_idle'), bootstyle="secondary")
-            self.setup_button.config(state=NORMAL)
-            self.prod_button.config(state=DISABLED)
-            self.final_register_button.config(state=DISABLED)
+        # Controla campos iniciais
+        for widget in [self.wo_combobox, self.service_combobox, self.impressor_combobox, self.turno_combobox]:
+            widget.config(state='readonly' if is_idle else 'disabled')
 
-        elif state == 'SETUP_RUNNING':
-            for w in self.setup_fields.values(): w.config(state=NORMAL)
-            self.setup_button.config(state=NORMAL, text=self.get_string('finish_setup_btn'))
-            self.setup_stop_button.config(state=NORMAL)
-            self.status_label.config(text=self.get_string('status_setup_running'), bootstyle="info")
+        # Controla campos de setup
+        for widget in self.setup_fields.values():
+            widget.config(state='normal' if is_setup_running else 'disabled')
 
-        elif state == 'PRODUCTION_READY':
-            for w in self.setup_fields.values(): w.config(state=DISABLED)
-            self.prod_button.config(state=NORMAL, text=self.get_string('start_production_btn'))
-            self.status_label.config(text=self.get_string('status_setup_done'), bootstyle="primary")
+        # Controla campos de produção
+        for key, widget in self.production_fields.items():
+            if key != 'giros_rodados':
+                widget.config(state='normal' if is_prod_running or is_finished else 'disabled')
+        if not (is_prod_running or is_finished):
+            self.production_fields['giros_rodados'].config(state='disabled')
 
-        elif state == 'PRODUCTION_RUNNING':
-            for w in self.setup_fields.values(): w.config(state=DISABLED)
-            self.production_fields['giros_rodados'].config(state=DISABLED)
-            self.prod_button.config(state=NORMAL, text=self.get_string('finish_production_btn'))
-            self.prod_stop_button.config(state=NORMAL)
-            self.status_label.config(text=self.get_string('status_prod_running'), bootstyle="success")
 
-        elif state == 'FINISHED':
-            self.production_fields['giros_rodados'].config(state=DISABLED)
-            self.final_register_button.config(state=NORMAL)
-            self.status_label.config(text=self.get_string('status_prod_done'), bootstyle="warning")
+        # Controla botões
+        self.setup_button.config(state='normal' if is_idle or is_setup_running else 'disabled')
+        if is_idle: self.setup_button.config(text=self.get_string('start_setup_btn'))
+        if is_setup_running: self.setup_button.config(text=self.get_string('finish_setup_btn'))
 
-    def toggle_setup(self):
-        if self.current_state == 'IDLE':
-            if not self.service_combobox.get() or not self.impressor_combobox.get() or not self.turno_combobox.get() or self.service_combobox.get() == self.get_string('no_pending_services'):
-                messagebox.showwarning("Seleção Incompleta", "Selecione WO, Etapa, Impressor e Turno para iniciar.")
-                return
-            
-            self.selected_servico_id = self.pending_services_data[self.service_combobox.get()]
-            self.current_state = 'SETUP_RUNNING'
-            self.setup_start_time = datetime.now()
-            self.update_setup_timer()
-            
-        elif self.current_state == 'SETUP_RUNNING':
-            if not self.validate_and_save_setup(): return
-            self.current_state = 'PRODUCTION_READY'
-            self.setup_end_time = datetime.now()
-            if self.setup_timer_job: self.after_cancel(self.setup_timer_job)
+        self.setup_stop_button.config(state='normal' if is_setup_running else 'disabled')
 
-        self.update_ui_state()
+        self.prod_button.config(state='normal' if is_prod_ready or is_prod_running else 'disabled')
+        if is_prod_ready: self.prod_button.config(text=self.get_string('start_production_btn'))
+        if is_prod_running: self.prod_button.config(text=self.get_string('finish_production_btn'))
 
-    def toggle_production(self):
-        if self.current_state == 'PRODUCTION_READY':
-            self.current_state = 'PRODUCTION_RUNNING'
-            self.prod_start_time = datetime.now()
-            self.update_prod_timer()
-        elif self.current_state == 'PRODUCTION_RUNNING':
-            self.current_state = 'FINISHED'
-            self.prod_end_time = datetime.now()
-            if self.prod_timer_job: self.after_cancel(self.prod_timer_job)
+        self.prod_stop_button.config(state='normal' if is_prod_running else 'disabled')
+        self.final_register_button.config(state='normal' if is_finished else 'disabled')
         
-        self.update_ui_state()
+        status_map = {
+            'IDLE': ('status_idle', 'secondary'),
+            'SETUP_RUNNING': ('status_setup_running', 'info'),
+            'PRODUCTION_READY': ('status_setup_done', 'primary'),
+            'PRODUCTION_RUNNING': ('status_prod_running', 'success'),
+            'FINISHED': ('status_prod_done', 'warning')
+        }
+        status_key, bootstyle = status_map.get(state, ('status_idle', 'secondary'))
+        self.status_label.config(text=self.get_string(status_key), bootstyle=bootstyle)
+
         
-    def validate_and_save_setup(self):
-        data = {key: widget.get().strip() for key, widget in self.setup_fields.items()}
-        for key, value in data.items():
-            if not value:
-                messagebox.showerror("Campos Obrigatórios", self.get_string('setup_fields_required'))
-                return False
-        
-        conn = self.get_db_connection()
-        if not conn: return False
-        try:
-            with conn.cursor() as cur:
-                query = """ INSERT INTO apontamento_setup (servico_id, data_apontamento, hora_inicio, hora_fim, perdas, malas, total_lavagens, numero_inspecao) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id; """
-                params = (self.selected_servico_id, date.today(), self.setup_start_time, datetime.now(), int(data['perdas']), int(data['malas']), int(data['total_lavagens']), data['numero_inspecao'])
-                cur.execute(query, params)
-                self.setup_id = cur.fetchone()[0]
-                for stop in self.all_stops_data:
-                    if stop['type'] == 'Setup':
-                        cur.execute("INSERT INTO paradas_setup (setup_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s)",
-                            (self.setup_id, stop['motivo_id'], stop['hora_inicio_parada'], stop['hora_fim_parada'], stop.get('motivo_extra_detail')))
-            conn.commit()
-            messagebox.showinfo("Sucesso", self.get_string('setup_saved_success'))
-            return True
-        except (psycopg2.Error, ValueError) as e:
-            conn.rollback()
-            messagebox.showerror("Erro", self.get_string('setup_save_failed', error=e))
-            return False
-        finally:
-            if conn: conn.close()
-
-    def submit_final_production(self):
-        self.production_fields['giros_rodados'].config(state=NORMAL)
-        prod_data = {key: widget.get().strip() for key, widget in self.production_fields.items()}
-        self.production_fields['giros_rodados'].config(state=DISABLED)
-
-        if not prod_data.get('giros_rodados') or not prod_data.get('quantidadeproduzida'):
-            messagebox.showerror("Validação", self.get_string('final_appointment_validation_error'), parent=self)
-            return
-
-        final_data = {}
-        final_data['servico_id'] = self.selected_servico_id
-        final_data['ordem_id'] = self.selected_ordem_id
-        final_data['impressor'] = self.initial_fields['impressor'].get()
-        final_data['turno'] = self.initial_fields['turno'].get()
-        final_data['wo'] = self.wo_combobox.get().split(' - ')[0]
-        
-        conn = self.get_db_connection()
-        if not conn: return
-        try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT cliente, equipamento, qtde_cores, tipo_papel, formato, gramatura, fsc FROM ordem_producao WHERE id = %s", (self.selected_ordem_id,))
-                wo_details = cur.fetchone()
-                if wo_details:
-                    keys = ['cliente', 'equipamento', 'qtde_cores', 'tipo_papel', 'formato', 'gramatura', 'fsc']
-                    final_data.update(dict(zip(keys, wo_details)))
-
-            final_data['data'] = date.today()
-            final_data['horainicio'] = self.prod_start_time.time() if self.prod_start_time else None
-            final_data['horafim'] = self.prod_end_time.time() if self.prod_end_time else None
-            final_data['giros_rodados'] = int(prod_data['giros_rodados']) if prod_data['giros_rodados'] else None
-            final_data['quantidadeproduzida'] = int(prod_data['quantidadeproduzida']) if prod_data['quantidadeproduzida'] else None
-            final_data['perdas_producao'] = int(prod_data['perdas_producao']) if prod_data.get('perdas_producao') else None
-            selected_motivo_perda = self.motivo_perda_combobox.get()
-            final_data['motivo_perda_id'] = self.motivos_perda_data.get(selected_motivo_perda)
-
-            with conn.cursor() as cur:
-                cols = [f'"{k}"' for k in final_data.keys() if final_data[k] is not None]
-                filtered_data = {k: v for k, v in final_data.items() if v is not None}
-                placeholders = [f"%({k})s" for k in filtered_data.keys()]
-                query = f"INSERT INTO apontamento ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) RETURNING id"
-                cur.execute(query, filtered_data)
-                apontamento_id = cur.fetchone()[0]
-
-                for stop in self.all_stops_data:
-                    if stop['type'] == 'Produção':
-                        cur.execute("INSERT INTO paradas (apontamento_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s)",
-                            (apontamento_id, stop['motivo_id'], stop['hora_inicio_parada'], stop['hora_fim_parada'], stop.get('motivo_extra_detail')))
-                
-                cur.execute("UPDATE ordem_servicos SET status = 'Concluído' WHERE id = %s", (self.selected_servico_id,))
-                cur.execute("SELECT COUNT(*) FROM ordem_servicos WHERE ordem_id = %s AND status = 'Pendente'", (self.selected_ordem_id,))
-                pending_services = cur.fetchone()[0]
-                if pending_services == 0:
-                    cur.execute("UPDATE ordem_producao SET status = 'Concluído' WHERE id = %s", (self.selected_ordem_id,))
-
-            conn.commit()
-            messagebox.showinfo("Sucesso", self.get_string('production_saved_success'), parent=self)
-            self.destroy()
-
-        except (psycopg2.Error, ValueError, KeyError) as e:
-            if conn: conn.rollback()
-            messagebox.showerror("Erro", self.get_string('production_save_failed', error=e), parent=self)
-        finally:
-            if conn: conn.close()
-
-    def update_setup_timer(self):
-        if self.current_state == 'SETUP_RUNNING':
-            elapsed = datetime.now() - self.setup_start_time
-            self.setup_timer_label.config(text=str(elapsed).split('.')[0])
-            self.setup_timer_job = self.after(1000, self.update_setup_timer)
-
-    def update_prod_timer(self):
-        if self.current_state == 'PRODUCTION_RUNNING':
-            elapsed = datetime.now() - self.prod_start_time
-            self.prod_timer_label.config(text=str(elapsed).split('.')[0])
-            self.prod_timer_job = self.after(1000, self.update_prod_timer)
-    
-    def open_stop_window(self, stop_type):
-        callback = self.add_setup_stop if stop_type == 'setup' else self.add_prod_stop
-        RealTimeStopWindow(self, self.db_config, callback)
-
-    def add_setup_stop(self, stop_data):
-        stop_data['type'] = 'Setup'
-        self.all_stops_data.append(stop_data)
-        self.refresh_stops_tree()
-    
-    def add_prod_stop(self, stop_data):
-        stop_data['type'] = 'Produção'
-        self.all_stops_data.append(stop_data)
-        self.refresh_stops_tree()
-
-    def refresh_stops_tree(self):
-        for item in self.stops_tree.get_children(): self.stops_tree.delete(item)
-        for stop in self.all_stops_data:
-            start = stop['hora_inicio_parada'].strftime('%H:%M:%S')
-            end = stop['hora_fim_parada'].strftime('%H:%M:%S')
-            duration = (datetime.combine(date.min, stop['hora_fim_parada']) - datetime.combine(date.min, stop['hora_inicio_parada']))
-            self.stops_tree.insert('', END, values=(stop['type'], stop['motivo_text'], start, end, str(duration)))
-
 # ==============================================================================
 # NOVA ESTRUTURA DE LOGIN E MENU
 # ==============================================================================
