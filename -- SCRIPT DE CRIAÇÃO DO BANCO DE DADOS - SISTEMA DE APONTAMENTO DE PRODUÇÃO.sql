@@ -108,6 +108,8 @@ CREATE TABLE ordem_producao (
     status VARCHAR(50) DEFAULT 'Em Aberto',
     data_cadastro_pcp TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 
+    sequencia_producao INT,
+
     -- MELHORIA: Substituição de campos de texto por chaves estrangeiras
     equipamento_id INTEGER,
     qtde_cores_id INTEGER,
@@ -224,5 +226,4 @@ INSERT INTO impressores (nome) VALUES ('João Silva'), ('Maria Oliveira'), ('Ped
 -- =============================================================================
 -- FIM DO SCRIPT
 -- DESENVOLVIDO POR CLAYTON ALMEIDA
--- ATUALIZADO POR PARCEIRO DE PROGRAMAÇÃO
 -- =============================================================================

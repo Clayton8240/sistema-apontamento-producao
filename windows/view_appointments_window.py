@@ -1,30 +1,29 @@
 # -*- coding: utf-8 -*-
-from PIL import Image, ImageTk
-from tkinter import PhotoImage
-import base64
+
 import openpyxl
+from datetime import datetime, timedelta, date
+import psycopg2
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from ttkbootstrap import DateEntry
-from tkinter import messagebox, Toplevel, END, W, E, S, N, CENTER, filedialog, simpledialog, Listbox
-import psycopg2
-from datetime import datetime, time, date, timedelta
-import json
-import os
-import csv
-import bcrypt
+from tkinter import filedialog, messagebox, Toplevel, END, BOTH, YES, X, Y, LEFT, RIGHT, VERTICAL, HORIZONTAL, BOTTOM, CENTER, W, E
+
+from config import LANGUAGES
 
 class ViewAppointmentsWindow(Toplevel):
     def __init__(self, master, db_config):
         super().__init__(master)
         self.master = master
         self.db_config = db_config
-        self.title(self.get_string("view_appointments_title"))
-        self.geometry("1200x700")
+        self.title("Relatório de Produção (PCP)")
+        self.geometry("1400x850")
         self.grab_set()
 
+        self.kpi_labels = {}
+
         self.create_widgets()
-        self.load_appointments()
+        self.load_filter_options()
+        self.apply_all_filters()
 
     def get_string(self, key, **kwargs):
         return self.master.get_string(key, **kwargs)
@@ -36,193 +35,383 @@ class ViewAppointmentsWindow(Toplevel):
         main_frame = tb.Frame(self, padding=10)
         main_frame.pack(fill=BOTH, expand=True)
 
-        filter_frame = tb.LabelFrame(main_frame, text=self.get_string("filter_section"), bootstyle=PRIMARY, padding=10)
+        kpi_frame = tb.LabelFrame(main_frame, text="Indicadores Chave (do Histórico de Produção)", bootstyle=SUCCESS, padding=10)
+        kpi_frame.pack(fill=X, pady=(0, 10))
+
+        kpi_defs = {
+            "qtd_produzida": "Qtd. Total Produzida",
+            "tempo_producao": "Tempo Total de Produção",
+            "tempo_parada": "Tempo Total de Parada",
+            "total_perdas": "Total de Perdas (Prod.)"
+        }
+        for i, (key, text) in enumerate(kpi_defs.items()):
+            frame = tb.Frame(kpi_frame)
+            frame.pack(side=LEFT, padx=20, pady=5, fill=X, expand=True)
+            tb.Label(frame, text=text, font=("-weight bold")).pack()
+            kpi_label = tb.Label(frame, text="-", font=("", 12))
+            kpi_label.pack()
+            self.kpi_labels[key] = kpi_label
+
+        filter_frame = tb.LabelFrame(main_frame, text="Filtros do Relatório", bootstyle=PRIMARY, padding=10)
         filter_frame.pack(fill=X, pady=5)
         
-        tb.Label(filter_frame, text=self.get_string("date_start_label")).pack(side=LEFT, padx=(0, 5))
+        tb.Label(filter_frame, text="Data Início:").grid(row=0, column=0, padx=(0, 5), pady=5, sticky=W)
         self.date_start_entry = DateEntry(filter_frame, bootstyle=INFO, dateformat='%d/%m/%Y')
-        self.date_start_entry.pack(side=LEFT, padx=5)
-        
-        tb.Label(filter_frame, text=self.get_string("date_end_label")).pack(side=LEFT, padx=(10, 5))
+        self.date_start_entry.grid(row=0, column=1, padx=5, pady=5)
+        tb.Label(filter_frame, text="Data Fim:").grid(row=0, column=2, padx=(10, 5), pady=5, sticky=W)
         self.date_end_entry = DateEntry(filter_frame, bootstyle=INFO, dateformat='%d/%m/%Y')
-        self.date_end_entry.pack(side=LEFT, padx=5)
+        self.date_end_entry.grid(row=0, column=3, padx=5, pady=5)
+        tb.Label(filter_frame, text="Status Ordem:").grid(row=0, column=4, padx=(15, 5), pady=5, sticky=W)
+        self.status_filter = tb.Combobox(filter_frame, state="readonly", values=["Todos", "Em Aberto", "Concluído"])
+        self.status_filter.grid(row=0, column=5, padx=5, pady=5)
+        self.status_filter.set("Todos")
+        tb.Label(filter_frame, text="Cliente:").grid(row=1, column=0, padx=(0, 5), pady=5, sticky=W)
+        self.client_filter = tb.Combobox(filter_frame, state="readonly")
+        self.client_filter.grid(row=1, column=1, padx=5, pady=5)
+        tb.Label(filter_frame, text="WO:").grid(row=1, column=2, padx=(10, 5), pady=5, sticky=W)
+        self.wo_filter = tb.Combobox(filter_frame, state="readonly")
+        self.wo_filter.grid(row=1, column=3, padx=5, pady=5)
+        buttons_filter_frame = tb.Frame(filter_frame)
+        buttons_filter_frame.grid(row=1, column=4, columnspan=2, padx=(15, 5), pady=5, sticky=E)
+        tb.Button(buttons_filter_frame, text="Aplicar Filtros", command=self.apply_all_filters, bootstyle=SUCCESS).pack(side=LEFT, padx=10)
+        tb.Button(buttons_filter_frame, text="Limpar Filtros", command=self.clear_filters, bootstyle=WARNING).pack(side=LEFT)
 
-        tb.Button(filter_frame, text=self.get_string("apply_filters_btn"), command=self.load_appointments, bootstyle=SUCCESS).pack(side=LEFT, padx=10)
-        tb.Button(filter_frame, text=self.get_string("clear_filters_btn"), command=self.clear_filters, bootstyle=WARNING).pack(side=LEFT)
+        notebook = tb.Notebook(main_frame, bootstyle="primary")
+        notebook.pack(fill=BOTH, expand=True, pady=10)
 
-        action_frame = tb.Frame(main_frame)
-        action_frame.pack(fill=X, pady=5)
-        tb.Button(action_frame, text=self.get_string("edit_appointment_btn"), command=self.edit_appointment, bootstyle="info-outline").pack(side=LEFT, padx=5)
-        tb.Button(action_frame, text=self.get_string("delete_appointment_btn"), command=self.delete_appointment, bootstyle="danger-outline").pack(side=LEFT, padx=5)
-        tb.Button(action_frame, text=self.get_string("view_stop_details_btn"), command=self.view_stops, bootstyle="secondary-outline").pack(side=LEFT, padx=5)
-        tb.Button(action_frame, text=self.get_string("export_csv_btn"), command=self.export_to_csv, bootstyle="success-outline").pack(side=RIGHT, padx=5)
-
-        tree_frame = tb.Frame(main_frame)
-        tree_frame.pack(fill=BOTH, expand=True)
-
-        self.cols = ("id", "data", "horainicio", "horafim", "wo", "equipamento", "impressor", "quantidadeproduzida")
-        self.headers = [self.get_string(f'col_{c}') for c in self.cols]
-        self.tree = tb.Treeview(tree_frame, columns=self.cols, show="headings", bootstyle=PRIMARY)
+        tab_historico = tb.Frame(notebook, padding=10)
+        tab_pendentes = tb.Frame(notebook, padding=10)
         
-        for col, header in zip(self.cols, self.headers):
-            self.tree.heading(col, text=header)
-            self.tree.column(col, anchor=CENTER, width=120)
+        notebook.add(tab_historico, text=" Histórico de Produção ")
+        notebook.add(tab_pendentes, text=" Ordens Pendentes ")
+
+        action_frame_hist = tb.LabelFrame(tab_historico, text="Ações do Histórico", bootstyle=INFO, padding=10)
+        action_frame_hist.pack(fill=X, pady=(0,10))
+        tb.Button(action_frame_hist, text="Ver Detalhes das Paradas", command=self.view_stops, bootstyle="secondary-outline").pack(side=LEFT, padx=5)
+        tb.Button(action_frame_hist, text="Exportar Histórico para Excel", command=self.export_to_xlsx, bootstyle="success-outline").pack(side=RIGHT, padx=5)
+
+        tree_frame_hist = tb.Frame(tab_historico)
+        tree_frame_hist.pack(fill=BOTH, expand=True)
+
+        self.cols_hist = (
+            "apontamento_id", "wo", "cliente", "servico_desc", "servico_status", "data_apont", 
+            "horainicio", "horafim", "impressor", "equipamento", "qtd_produzida", "perdas_producao"
+        )
+        self.headers_hist = [
+            "ID Apont.", "WO", "Cliente", "Serviço", "Status Serviço", "Data", 
+            "Início Prod.", "Fim Prod.", "Impressor", "Equipamento", "Qtd. Produzida", "Perdas"
+        ]
         
-        self.tree.column("id", width=50)
+        self.tree_hist = tb.Treeview(tree_frame_hist, columns=self.cols_hist, show="headings", bootstyle=PRIMARY)
+        for col, header in zip(self.cols_hist, self.headers_hist):
+            self.tree_hist.heading(col, text=header)
+            self.tree_hist.column(col, anchor=W, width=120)
+        self.tree_hist.column("apontamento_id", width=0, stretch=False)
+        self.tree_hist.pack(side=LEFT, fill=BOTH, expand=True)
+        tb.Scrollbar(tree_frame_hist, orient=VERTICAL, command=self.tree_hist.yview).pack(side=RIGHT, fill=Y)
 
-        v_scroll = tb.Scrollbar(tree_frame, orient=VERTICAL, command=self.tree.yview)
-        h_scroll = tb.Scrollbar(main_frame, orient=HORIZONTAL, command=self.tree.xview)
-        self.tree.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+        tree_frame_pend = tb.Frame(tab_pendentes)
+        tree_frame_pend.pack(fill=BOTH, expand=True)
 
-        self.tree.pack(side=LEFT, fill=BOTH, expand=True)
-        v_scroll.pack(side=RIGHT, fill=Y)
-        h_scroll.pack(side=BOTTOM, fill=X)
+        self.cols_pend = ("seq", "wo", "cliente", "servico_desc", "servico_status", "data_previsao")
+        self.headers_pend = ("Seq.", "WO", "Cliente", "Serviço", "Status Serviço", "Data Previsão")
 
-    def load_appointments(self):
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        self.tree_pend = tb.Treeview(tree_frame_pend, columns=self.cols_pend, show="headings", bootstyle=INFO)
+        for col, header in zip(self.cols_pend, self.headers_pend):
+            self.tree_pend.heading(col, text=header)
+            self.tree_pend.column(col, anchor=W, width=150)
+        self.tree_pend.column("seq", width=50, stretch=False)
+        self.tree_pend.pack(side=LEFT, fill=BOTH, expand=True)
+        tb.Scrollbar(tree_frame_pend, orient=VERTICAL, command=self.tree_pend.yview).pack(side=RIGHT, fill=Y)
+
+    def apply_all_filters(self):
+        self.load_production_history()
+        self.load_pending_orders()
+
+    def load_filter_options(self):
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT DISTINCT cliente FROM ordem_producao WHERE cliente IS NOT NULL ORDER BY cliente")
+                clients = ["Todos"] + [row[0] for row in cur.fetchall()]
+                self.client_filter['values'] = clients
+                self.client_filter.set("Todos")
+
+                cur.execute("SELECT DISTINCT numero_wo FROM ordem_producao ORDER BY numero_wo")
+                wos = ["Todas"] + [row[0] for row in cur.fetchall()]
+                self.wo_filter['values'] = wos
+                self.wo_filter.set("Todas")
+        except (psycopg2.Error, ValueError) as e:
+            messagebox.showerror("Erro ao carregar filtros", f"Não foi possível carregar as opções de filtro: {e}", parent=self)
+        finally:
+            if conn: conn.close()
+            
+    def load_production_history(self):
+        for item in self.tree_hist.get_children():
+            self.tree_hist.delete(item)
 
         conn = self.get_db_connection()
         if not conn: return
         
         try:
             with conn.cursor() as cur:
-                query = f"SELECT {', '.join(self.cols)} FROM {self.db_config['tabela']}"
-                filters = []
-                params = []
+                query = """
+                    SELECT 
+                        ap.id, op.numero_wo, op.cliente, os.descricao, os.status, ap.data, 
+                        ap.horainicio, ap.horafim, imp.nome, et.descricao, 
+                        ap.quantidadeproduzida, ap.perdas_producao
+                    FROM apontamento AS ap
+                    LEFT JOIN ordem_servicos AS os ON ap.servico_id = os.id
+                    LEFT JOIN ordem_producao AS op ON os.ordem_id = op.id
+                    LEFT JOIN impressores AS imp ON ap.impressor_id = imp.id
+                    LEFT JOIN equipamentos_tipos AS et ON op.equipamento_id = et.id
+                    WHERE {where_clauses}
+                    ORDER BY ap.data DESC, ap.horainicio DESC
+                """
                 
-                start_date_str = self.date_start_entry.entry.get()
-                end_date_str = self.date_end_entry.entry.get()
-
-                if start_date_str:
-                    filters.append("data >= %s")
-                    params.append(datetime.strptime(start_date_str, '%d/%m/%Y').date())
-                if end_date_str:
-                    filters.append("data <= %s")
-                    params.append(datetime.strptime(end_date_str, '%d/%m/%Y').date())
-
-                if filters:
-                    query += " WHERE " + " AND ".join(filters)
+                filters, params = self.get_filters()
+                where_str = " AND ".join(filters) if filters else "1=1"
+                final_query = query.format(where_clauses=where_str)
                 
-                query += " ORDER BY data DESC, horainicio DESC"
-                
-                cur.execute(query, tuple(params))
+                cur.execute(final_query, tuple(params))
                 for row in cur.fetchall():
-                    self.tree.insert("", END, values=row)
+                    processed_row = [item if item is not None else "" for item in row]
+                    self.tree_hist.insert("", END, values=tuple(processed_row))
+            
+            self.calculate_and_display_kpis()
 
         except (psycopg2.Error, ValueError) as e:
-            messagebox.showerror("Erro", self.get_string("db_load_appointments_failed", table_name=self.db_config['tabela'], error=e), parent=self)
+            messagebox.showerror("Erro ao Carregar Histórico", f"Falha ao carregar relatório: {e}", parent=self)
         finally:
             if conn: conn.close()
+
+    def load_pending_orders(self):
+        for item in self.tree_pend.get_children():
+            self.tree_pend.delete(item)
+
+        conn = self.get_db_connection()
+        if not conn: return
+        
+        try:
+            with conn.cursor() as cur:
+                query = """
+                    SELECT
+                        op.sequencia_producao, op.numero_wo, op.cliente,
+                        os.descricao, os.status, op.data_previsao_entrega
+                    FROM ordem_producao AS op
+                    LEFT JOIN ordem_servicos AS os ON op.id = os.ordem_id
+                    WHERE (os.status = 'Pendente' OR os.status = 'Em Produção') AND {where_clauses}
+                    ORDER BY op.sequencia_producao, os.sequencia
+                """
+                filters, params = self.get_filters(ignore_dates=True)
+                where_str = " AND ".join(filters) if filters else "1=1"
+                final_query = query.format(where_clauses=where_str)
+
+                cur.execute(final_query, tuple(params))
+                for row in cur.fetchall():
+                    processed_row = [item if item is not None else "" for item in row]
+                    self.tree_pend.insert("", END, values=tuple(processed_row))
+
+        except (psycopg2.Error, ValueError) as e:
+            messagebox.showerror("Erro ao Carregar Pendentes", f"Falha ao carregar ordens pendentes: {e}", parent=self)
+        finally:
+            if conn: conn.close()
+
+    def get_filters(self, ignore_dates=False):
+        filters = []
+        params = []
+        
+        if not ignore_dates:
+            if self.date_start_entry.entry.get():
+                filters.append("ap.data >= %s")
+                params.append(datetime.strptime(self.date_start_entry.entry.get(), '%d/%m/%Y').date())
+            if self.date_end_entry.entry.get():
+                filters.append("ap.data <= %s")
+                params.append(datetime.strptime(self.date_end_entry.entry.get(), '%d/%m/%Y').date())
+        
+        if self.status_filter.get() != "Todos":
+            filters.append("op.status = %s")
+            params.append(self.status_filter.get())
+        if self.client_filter.get() != "Todos":
+            filters.append("op.cliente = %s")
+            params.append(self.client_filter.get())
+        if self.wo_filter.get() != "Todas":
+            filters.append("op.numero_wo = %s")
+            params.append(self.wo_filter.get())
+            
+        return filters, params
 
     def clear_filters(self):
         self.date_start_entry.entry.delete(0, END)
         self.date_end_entry.entry.delete(0, END)
-        self.load_appointments()
+        self.status_filter.set("Todos")
+        self.client_filter.set("Todos")
+        self.wo_filter.set("Todos")
+        self.apply_all_filters()
+        
+    def calculate_and_display_kpis(self):
+        total_produzido = 0
+        total_perdas = 0
+        total_producao_delta = timedelta()
 
-    def edit_appointment(self):
-        selected_item = self.tree.focus()
-        if not selected_item:
-            messagebox.showwarning(self.get_string("selection_required_title"), self.get_string("select_appointment_to_edit"), parent=self)
-            return
-        item_values = self.tree.item(selected_item, "values")
-        appointment_id = item_values[0]
-        messagebox.showinfo("Em Desenvolvimento", f"A função para editar o apontamento ID {appointment_id} ainda não foi implementada.", parent=self)
+        for item_id in self.tree_hist.get_children():
+            values = self.tree_hist.item(item_id, 'values')
+            idx_inicio = self.cols_hist.index('horainicio')
+            idx_fim = self.cols_hist.index('horafim')
+            idx_qtd = self.cols_hist.index('qtd_produzida')
+            idx_perdas = self.cols_hist.index('perdas_producao')
 
-    def delete_appointment(self):
-        selected_item = self.tree.focus()
-        if not selected_item:
-            messagebox.showwarning(self.get_string("selection_required_title"), self.get_string("select_appointment_to_delete"), parent=self)
-            return
+            try: total_produzido += int(values[idx_qtd])
+            except (ValueError, IndexError): pass
+            try: total_perdas += int(values[idx_perdas])
+            except (ValueError, IndexError): pass
+            
+            try:
+                start_time = datetime.strptime(values[idx_inicio], '%H:%M:%S').time()
+                end_time = datetime.strptime(values[idx_fim], '%H:%M:%S').time()
+                total_producao_delta += (datetime.combine(date.min, end_time) - datetime.combine(date.min, start_time))
+            except (ValueError, IndexError): pass
+        
+        total_parada_delta = self.calculate_total_downtime()
 
-        item_values = self.tree.item(selected_item, "values")
-        app_id = item_values[0]
+        total_seconds_prod = int(total_producao_delta.total_seconds())
+        h_prod, rem_prod = divmod(total_seconds_prod, 3600)
+        m_prod, s_prod = divmod(rem_prod, 60)
 
-        if not messagebox.askyesno(self.get_string("confirm_delete_appointment_title"), self.get_string("confirm_delete_appointment_msg", id=app_id), parent=self):
-            return
+        total_seconds_parada = int(total_parada_delta.total_seconds())
+        h_parada, rem_parada = divmod(total_seconds_parada, 3600)
+        m_parada, s_parada = divmod(rem_parada, 60)
 
+        self.kpi_labels["qtd_produzida"].config(text=f"{total_produzido:,}".replace(",", "."))
+        self.kpi_labels["total_perdas"].config(text=f"{total_perdas:,}".replace(",", "."))
+        self.kpi_labels["tempo_producao"].config(text=f"{h_prod:02d}:{m_prod:02d}:{s_prod:02d}")
+        self.kpi_labels["tempo_parada"].config(text=f"{h_parada:02d}:{m_parada:02d}:{s_parada:02d}")
+    
+    def calculate_total_downtime(self):
+        apontamento_ids = [self.tree_hist.item(item_id, 'values')[0] for item_id in self.tree_hist.get_children()]
+        if not apontamento_ids:
+            return timedelta()
+        
+        total_downtime = timedelta()
         conn = self.get_db_connection()
-        if not conn: return
-
+        if not conn: return total_downtime
         try:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM paradas WHERE apontamento_id = %s", (app_id,))
-                cur.execute(f"DELETE FROM {self.db_config['tabela']} WHERE id = %s", (app_id,))
-            conn.commit()
-            messagebox.showinfo("Sucesso", self.get_string("delete_appointment_success", id=app_id), parent=self)
-            self.load_appointments()
+                placeholders = ','.join(['%s'] * len(apontamento_ids))
+                query = f"""
+                    SELECT hora_inicio_parada, hora_fim_parada 
+                    FROM paradas 
+                    WHERE apontamento_id IN ({placeholders})
+                """
+                cur.execute(query, tuple(apontamento_ids))
+                for start_time, end_time in cur.fetchall():
+                    if start_time and end_time:
+                        total_downtime += (datetime.combine(date.min, end_time) - datetime.combine(date.min, start_time))
         except psycopg2.Error as e:
-            conn.rollback()
-            messagebox.showerror("Erro", self.get_string("delete_appointment_failed", error=e), parent=self)
+            print(f"Erro ao calcular tempo de parada: {e}")
         finally:
             if conn: conn.close()
-            
+        return total_downtime
+
     def view_stops(self):
-        selected_item = self.tree.focus()
+        selected_item = self.tree_hist.focus()
         if not selected_item:
-            messagebox.showwarning(self.get_string("selection_required_title"), self.get_string("select_appointment_to_view_stops"), parent=self)
+            messagebox.showwarning("Seleção Necessária", "Por favor, selecione um apontamento na lista para ver os detalhes.", parent=self)
             return
 
-        item_values = self.tree.item(selected_item, "values")
-        app_id = item_values[0]
+        item_values = self.tree_hist.item(selected_item, "values")
+        apontamento_id = item_values[0]
+        wo_num = item_values[1]
+        
+        StopsDetailsWindow(self, self.db_config, apontamento_id, wo_num)
 
-        stops_win = Toplevel(self)
-        stops_win.title(self.get_string("stop_details_for_appointment", id=app_id))
-        stops_win.geometry("600x400")
-        stops_win.grab_set()
+    def export_to_xlsx(self):
+        if not self.tree_hist.get_children():
+            messagebox.showinfo("Exportar", "Não há dados no histórico de produção para exportar.", parent=self)
+            return
 
-        cols = ("motivo", "inicio", "fim")
-        headers = (self.get_string("col_motivos_parada"), self.get_string("col_horainicio"), self.get_string("col_horafim"))
-        tree = tb.Treeview(stops_win, columns=cols, show="headings", bootstyle=INFO)
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Planilhas Excel", "*.xlsx"), ("Todos os Arquivos", "*.*")],
+            title="Salvar Relatório de Histórico como XLSX"
+        )
+        if not filepath: return
+
+        try:
+            workbook = openpyxl.Workbook()
+            sheet = workbook.active
+            sheet.title = "Historico_Producao"
+            sheet.append(self.headers_hist)
+            
+            for item_id in self.tree_hist.get_children():
+                row_values = self.tree_hist.item(item_id, 'values')
+                sheet.append(list(row_values))
+                
+            workbook.save(filepath)
+            messagebox.showinfo("Sucesso", f"Relatório exportado com sucesso para:\n{filepath}", parent=self)
+        except Exception as e:
+            messagebox.showerror("Erro ao Exportar", f"Ocorreu um erro ao exportar o relatório: {e}", parent=self)
+
+
+class StopsDetailsWindow(Toplevel):
+    def __init__(self, master, db_config, apontamento_id, wo_number):
+        super().__init__(master)
+        self.db_config = db_config
+        self.apontamento_id = apontamento_id
+        
+        self.title(f"Detalhes de Parada - WO: {wo_number} (Apont. ID: {apontamento_id})")
+        self.geometry("600x400")
+        self.grab_set()
+
+        self.create_widgets()
+        self.load_stops_data()
+
+    def get_db_connection(self):
+        return self.master.get_db_connection()
+
+    def create_widgets(self):
+        main_frame = tb.Frame(self, padding=10)
+        main_frame.pack(fill=BOTH, expand=True)
+
+        cols = ("motivo", "inicio", "fim", "duracao")
+        headers = ("Motivo da Parada", "Hora Início", "Hora Fim", "Duração")
+        self.tree = tb.Treeview(main_frame, columns=cols, show="headings", bootstyle=INFO)
         for col, header in zip(cols, headers):
-            tree.heading(col, text=header)
-        tree.pack(fill=BOTH, expand=True, padx=10, pady=10)
+            self.tree.heading(col, text=header)
+            self.tree.column(col, anchor=CENTER)
+        self.tree.column("motivo", anchor=W)
+        self.tree.pack(fill=BOTH, expand=True)
 
+    def load_stops_data(self):
         conn = self.get_db_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
                 query = """
-                    SELECT mt.descricao, p.hora_inicio_parada, p.hora_fim_parada
+                    SELECT 
+                        mt.descricao, 
+                        p.hora_inicio_parada, 
+                        p.hora_fim_parada
                     FROM paradas p
-                    JOIN motivos_parada_tipos mt ON p.motivo_id = mt.id
+                    LEFT JOIN motivos_parada_tipos mt ON p.motivo_id = mt.id
                     WHERE p.apontamento_id = %s
                 """
-                cur.execute(query, (app_id,))
+                cur.execute(query, (self.apontamento_id,))
                 rows = cur.fetchall()
+
                 if not rows:
-                    messagebox.showinfo(self.get_string("no_stops_for_appointment"), self.get_string("no_stops_for_appointment_full"), parent=stops_win)
-                    stops_win.destroy()
+                    messagebox.showinfo("Sem Paradas", "Nenhuma parada registrada para este apontamento.", parent=self)
+                    self.destroy()
                     return
 
-                for row in rows:
-                    tree.insert("", END, values=row)
-
+                for motivo, inicio, fim in rows:
+                    duracao_str = ""
+                    if inicio and fim:
+                        delta = datetime.combine(date.min, fim) - datetime.combine(date.min, inicio)
+                        duracao_str = str(delta)
+                    self.tree.insert("", END, values=(motivo, inicio, fim, duracao_str))
         except psycopg2.Error as e:
-            messagebox.showerror("Erro", self.get_string("db_load_stops_failed", error=e), parent=stops_win)
+            messagebox.showerror("Erro", f"Falha ao carregar detalhes das paradas: {e}", parent=self)
         finally:
             if conn: conn.close()
-
-    def export_to_csv(self):
-        if not self.tree.get_children():
-            messagebox.showinfo("Exportar", self.get_string("no_data_to_export"), parent=self)
-            return
-
-        filepath = filedialog.asksaveasfilename(
-            defaultextension=".csv",
-            filetypes=[(self.get_string("csv_files_type"), "*.csv"), (self.get_string("all_files_type"), "*.*")],
-            title=self.get_string("save_csv_dialog_title")
-        )
-
-        if not filepath: return
-
-        try:
-            with open(filepath, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                writer.writerow(self.headers)
-                for item_id in self.tree.get_children():
-                    row = self.tree.item(item_id, 'values')
-                    writer.writerow(row)
-            messagebox.showinfo("Sucesso", self.get_string("export_success_message", path=filepath), parent=self)
-        except Exception as e:
-            messagebox.showerror("Erro", self.get_string("export_error", error=e), parent=self)

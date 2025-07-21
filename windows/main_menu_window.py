@@ -6,7 +6,6 @@ from ttkbootstrap.constants import *
 
 # Importações do nosso projeto
 from config import LANGUAGES
-from database import get_db_connection
 from ui_components import LookupTableManagerWindow
 from .production_app_window import App
 from .pcp_window import PCPWindow
@@ -14,7 +13,7 @@ from .view_appointments_window import ViewAppointmentsWindow
 
 class MenuPrincipalWindow(tb.Toplevel):
     def __init__(self, master, db_config):
-        super().__init__(master) # Passa o 'master' para o construtor do Toplevel
+        super().__init__(master)
         self.db_config = db_config
         self.master = master
         self.current_language = self.db_config.get('language', 'portugues')
