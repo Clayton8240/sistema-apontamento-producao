@@ -10,6 +10,8 @@ from ui_components import LookupTableManagerWindow
 from .production_app_window import App
 from .pcp_window import PCPWindow
 from .view_appointments_window import ViewAppointmentsWindow
+# Importação da nova janela do Dashboard
+from .dashboard_manager_view import DashboardManagerView
 
 class MenuPrincipalWindow(tb.Toplevel):
     def __init__(self, master, db_config):
@@ -18,8 +20,8 @@ class MenuPrincipalWindow(tb.Toplevel):
         self.master = master
         self.current_language = self.db_config.get('language', 'portugues')
         self.set_localized_title()
-        self.geometry("600x400")
-        w, h = 600, 400
+        self.geometry("600x450")
+        w, h = 600, 450
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         x, y = (sw // 2) - (w // 2), (sh // 2) - (h // 2)
         self.geometry(f"{w}x{h}+{x}+{y}")
@@ -42,10 +44,15 @@ class MenuPrincipalWindow(tb.Toplevel):
         main_frame.pack(fill=BOTH, expand=YES)
         tb.Label(main_frame, text=self.get_string('main_menu_title'), bootstyle=PRIMARY, font=("Helvetica", 16, "bold")).pack(pady=(10, 30))
         btn_style = "primary-outline"
-        btn_padding = {'pady': 10, 'padx': 20, 'ipadx': 10, 'ipady': 10}
+        btn_padding = {'pady': 8, 'padx': 20, 'ipadx': 10, 'ipady': 10}
+        
         tb.Button(main_frame, text=self.get_string('btn_production_entry'), bootstyle=btn_style, command=self.open_production_window).pack(fill=X, **btn_padding)
         tb.Button(main_frame, text=self.get_string('btn_pcp_management'), bootstyle=btn_style, command=self.open_pcp_window).pack(fill=X, **btn_padding)
         tb.Button(main_frame, text=self.get_string('btn_view_entries'), bootstyle=btn_style, command=self.open_view_window).pack(fill=X, **btn_padding)
+        
+        # --- BOTÃO CORRIGIDO ---
+        # O 'command' agora aponta para a função 'open_manager_dashboard'
+        tb.Button(main_frame, text="Dashboard Gerencial", bootstyle="success-outline", command=self.open_manager_dashboard).pack(fill=X, **btn_padding)
 
     def create_menu(self):
         self.menubar = tb.Menu(self)
@@ -79,7 +86,16 @@ class MenuPrincipalWindow(tb.Toplevel):
             self.open_windows['view'].protocol("WM_DELETE_WINDOW", lambda: self.on_window_close('view'))
         else:
             self.open_windows['view'].lift()
-            
+    
+    # --- FUNÇÃO PARA ABRIR O DASHBOARD ---
+    # Esta função agora será chamada pelo botão corretamente
+    def open_manager_dashboard(self):
+        if 'dashboard' not in self.open_windows or not self.open_windows['dashboard'].winfo_exists():
+            self.open_windows['dashboard'] = DashboardManagerView(master=self, db_config=self.db_config)
+            self.open_windows['dashboard'].protocol("WM_DELETE_WINDOW", lambda: self.on_window_close('dashboard'))
+        else:
+            self.open_windows['dashboard'].lift()
+
     def on_window_close(self, window_key):
         if window_key in self.open_windows:
             if self.open_windows[window_key].winfo_exists():

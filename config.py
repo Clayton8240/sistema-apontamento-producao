@@ -82,6 +82,7 @@ LANGUAGES = {
         'yes_short': 'Sim',
         'no_short': 'Não',
         'service_select_label': 'Selecionar Etapa/Serviço:',
+        'col_tempo_por_folha': 'Tempo por Folha (ms)',
 
         # Seções de Tela (LabelFrame)
         'form_data_section': 'Dados',
@@ -423,10 +424,10 @@ LANGUAGES = {
         'setup_save_failed': 'Failed to save Setup data: {error}',
         'status_prod_done': 'PRODUCTION FINISHED',
         'finished': 'COMPLETED',
+        'col_tempo_por_folha': 'Time per Sheet (ms)',
     },
 }
 LOOKUP_TABLE_SCHEMAS = {
-    "equipamentos_tipos": {"display_name_key": "equipment_label", "table": "equipamentos_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
     "qtde_cores_tipos": {"display_name_key": "col_qtde_cores", "table": "qtde_cores_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}, "giros": {"type": "int", "db_column": "giros", "display_key": "col_giros_rodados", "editable": True}}},
     "tipos_papel": {"display_name_key": "col_tipo_papel", "table": "tipos_papel", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
     "impressores": {"display_name_key": "printer_label", "table": "impressores", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "nome": {"type": "str", "db_column": "nome", "display_key": "col_nome", "editable": True}}},
@@ -437,4 +438,4 @@ LOOKUP_TABLE_SCHEMAS = {
     "fsc_tipos": {"display_name_key": "col_fsc", "table": "fsc_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
     "turnos_tipos": {"display_name_key": "shift_label", "table": "turnos_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
     "acabamentos_tipos": {"display_name_key": "col_acabamento", "table": "acabamentos_tipos", "pk_column": "id", "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False}, "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True}}},
-}
+    "equipamentos_tipos": {"display_name_key": "equipment_label","table": "equipamentos_tipos","pk_column": "id",  "columns": {"id": {"type": "int", "db_column": "id", "display_key": "col_id", "editable": False},       "descricao": {"type": "str", "db_column": "descricao", "display_key": "col_descricao", "editable": True},"tempo_por_folha_ms": {"type": "int","db_column": "tempo_por_folha_ms","display_key": "col_tempo_por_folha", "editable": True}}},}

@@ -62,37 +62,51 @@ class App(Toplevel):
         top_frame.grid_columnconfigure(0, weight=1)
         top_frame.grid_columnconfigure(1, weight=1)
 
+        # --- NOVO FLUXO DE SELEÇÃO ---
         selection_frame = tb.LabelFrame(top_frame, text=self.get_string('initial_selection_section'), bootstyle=PRIMARY, padding=15)
         selection_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         selection_frame.grid_columnconfigure(1, weight=1)
         
-        tb.Label(selection_frame, text="Próxima WO na Fila:").grid(row=0, column=0, sticky=W, padx=5, pady=2)
-        self.wo_entry = tb.Entry(selection_frame, state="readonly")
-        self.wo_entry.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
+        # Passo 1: Selecionar o Equipamento
+        tb.Label(selection_frame, text="Equipamento de Trabalho:").grid(row=0, column=0, sticky=W, padx=5, pady=5)
+        self.equipment_combobox = tb.Combobox(selection_frame, state="readonly")
+        self.equipment_combobox.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+        self.equipment_combobox.bind("<<ComboboxSelected>>", self.on_equipment_select)
 
-        tb.Label(selection_frame, text=self.get_string("service_select_label")).grid(row=1, column=0, sticky=W, padx=5, pady=2)
+        # Passo 2: Selecionar o Serviço/WO (será preenchido após selecionar a máquina)
+        tb.Label(selection_frame, text="Serviço na Fila da Máquina:").grid(row=1, column=0, sticky=W, padx=5, pady=5)
         self.service_combobox = tb.Combobox(selection_frame, state="disabled")
-        self.service_combobox.grid(row=1, column=1, sticky=EW, padx=5, pady=2)
-        self.service_combobox.bind("<<ComboboxSelected>>", lambda e: self.update_ui_state())
+        self.service_combobox.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
+        self.service_combobox.bind("<<ComboboxSelected>>", self.on_service_select)
 
-        tb.Label(selection_frame, text=self.get_string("printer_label") + ":").grid(row=2, column=0, sticky=W, padx=5, pady=2)
+        # Seleção de Impressor e Turno (permanece igual)
+        tb.Label(selection_frame, text=self.get_string("printer_label") + ":").grid(row=2, column=0, sticky=W, padx=5, pady=5)
         self.impressor_combobox = tb.Combobox(selection_frame, state="readonly")
-        self.impressor_combobox.grid(row=2, column=1, sticky=EW, padx=5, pady=2)
+        self.impressor_combobox.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
         self.initial_fields['impressor'] = self.impressor_combobox
         
-        tb.Label(selection_frame, text=self.get_string("shift_label") + ":").grid(row=3, column=0, sticky=W, padx=5, pady=2)
+        tb.Label(selection_frame, text=self.get_string("shift_label") + ":").grid(row=3, column=0, sticky=W, padx=5, pady=5)
         self.turno_combobox = tb.Combobox(selection_frame, state="readonly")
-        self.turno_combobox.grid(row=3, column=1, sticky=EW, padx=5, pady=2)
+        self.turno_combobox.grid(row=3, column=1, sticky="ew", padx=5, pady=5)
         self.initial_fields['turno'] = self.turno_combobox
         
+        # --- O resto da UI permanece o mesmo ---
         self.wo_info_frame = tb.LabelFrame(top_frame, text="Informações da Ordem", bootstyle=PRIMARY, padding=15)
         self.wo_info_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
         
         info_keys = {
-            'col_cliente': 'Cliente', 'equipment_label': 'Equipamento', 
+            'col_wo': 'Nº WO', 'col_cliente': 'Cliente', 'equipment_label': 'Equipamento do Serviço', 
             'col_tipo_papel': 'Tipo Papel', 'col_tiragem_em_folhas': 'Tiragem Meta',
-            'col_qtde_cores': 'QTDE Cores', 'giros_previstos': 'Giros Previstos'
+            'col_qtde_cores': 'QTDE Cores', 'giros_previstos': 'Giros Previstos',
+            'tempo_previsto': 'Tempo Previsto'
         }
+        for i, (key, text) in enumerate(info_keys.items()):
+            display_text = self.get_string(key) if self.get_string(key) != key else text
+            tb.Label(self.wo_info_frame, text=f"{display_text}:", font="-weight bold").grid(row=i, column=0, sticky=W, padx=5, pady=2)
+            label_widget = tb.Label(self.wo_info_frame, text="-")
+            label_widget.grid(row=i, column=1, sticky=W, padx=5, pady=2)
+            self.info_labels[key] = label_widget
+
         for i, (key, text) in enumerate(info_keys.items()):
             display_text = self.get_string(key) if self.get_string(key) != key else text
             tb.Label(self.wo_info_frame, text=f"{display_text}:", font="-weight bold").grid(row=i, column=0, sticky=W, padx=5, pady=2)
@@ -176,133 +190,96 @@ class App(Toplevel):
         tb.Label(status_bar, text="Status:", font=("Helvetica", 12, "bold")).pack(side=LEFT)
         self.status_label = tb.Label(status_bar, text=self.get_string('status_idle'), font=("Helvetica", 12, "bold"), bootstyle="secondary")
         self.status_label.pack(side=LEFT, padx=10)
-        
-    # ###
-    # ### O RESTO DO CÓDIGO A PARTIR DAQUI ESTÁ COMPLETO E CORRIGIDO
-    # ###
     
     def load_initial_data(self):
         conn = self.get_db_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
+                # Carrega dados gerais
                 cur.execute('SELECT descricao, giros FROM qtde_cores_tipos')
                 self.giros_map = {desc: giros if giros is not None else 1 for desc, giros in cur.fetchall()}
                 
+                # Carrega Equipamentos para o primeiro combobox
+                cur.execute('SELECT id, descricao FROM equipamentos_tipos ORDER BY descricao')
+                self.equipments_data = {desc: eq_id for eq_id, desc in cur.fetchall()}
+                self.equipment_combobox['values'] = list(self.equipments_data.keys())
+                
                 cur.execute('SELECT nome FROM impressores ORDER BY nome')
                 self.impressor_combobox['values'] = [row[0] for row in cur.fetchall()]
+                
                 cur.execute('SELECT descricao FROM turnos_tipos ORDER BY id')
                 self.turno_combobox['values'] = [row[0] for row in cur.fetchall()]
+                
                 cur.execute('SELECT id, descricao FROM motivos_perda_tipos ORDER BY descricao')
                 self.motivos_perda_data = {desc: mid for mid, desc in cur.fetchall()}
                 self.motivo_perda_combobox['values'] = list(self.motivos_perda_data.keys())
+                
         except Exception as e:
             messagebox.showwarning("Erro", f"Falha ao carregar dados iniciais: {e}", parent=self)
         finally:
             if conn: conn.close()
-            
-    def load_next_wo_in_queue(self):
-        self.wo_entry.config(state=NORMAL)
-        self.wo_entry.delete(0, END)
-        self.service_combobox.set('')
-        self.service_combobox['values'] = []
-        self.service_combobox.config(state='disabled')
-        self.selected_ordem_id = None
-        self.update_wo_info_panel()
-
-        conn = self.get_db_connection()
-        if not conn: return
-
-        try:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    SELECT id, numero_wo, cliente 
-                    FROM ordem_producao 
-                    WHERE status = 'Em Aberto' 
-                    ORDER BY sequencia_producao ASC 
-                    LIMIT 1
-                """)
-                next_wo_data = cur.fetchone()
-
-                if not next_wo_data:
-                    self.wo_entry.insert(0, "Nenhuma ordem na fila de produção.")
-                    self.wo_entry.config(state='readonly')
-                    self.update_ui_state()
-                    return
-
-                self.selected_ordem_id, wo_num, cliente = next_wo_data
-                display_text = f"{wo_num} - {cliente or 'Sem Cliente'}"
-                self.wo_entry.insert(0, display_text)
-                self.wo_entry.config(state='readonly')
-
-                self.load_services_for_current_wo()
-            
-            self.update_wo_info_panel()
-
-        except psycopg2.Error as e:
-            messagebox.showerror("Erro", f"Não foi possível carregar a próxima WO da fila: {e}", parent=self)
-        finally:
-            if conn: conn.close()
-        
-        self.update_ui_state()
-
-    def load_services_for_current_wo(self, status_filter=('Pendente',)):
-        if not self.selected_ordem_id: return
-
-        conn = self.get_db_connection()
-        if not conn: return
-        
-        try:
-            with conn.cursor() as cur:
-                query = "SELECT id, descricao FROM ordem_servicos WHERE ordem_id = %s AND status IN %s ORDER BY sequencia"
-                cur.execute(query, (self.selected_ordem_id, status_filter))
-                services = cur.fetchall()
-                if services:
-                    service_list = [f"{service_id}: {desc}" for service_id, desc in services]
-                    self.pending_services_data = {f"{service_id}: {desc}": service_id for service_id, desc in services}
-                    self.service_combobox['values'] = service_list
-                    self.service_combobox.config(state='readonly')
-                else:
-                    self.service_combobox.set(self.get_string('no_pending_services'))
-        except psycopg2.Error as e:
-            messagebox.showerror("Erro", f"Falha ao carregar etapas da WO: {e}", parent=self)
-        finally:
-            if conn: conn.close()
 
     def update_wo_info_panel(self):
+        """Atualiza o painel de informações com detalhes da WO e da MÁQUINA específica."""
+        # Limpa os labels antes de carregar novos dados
         for label in self.info_labels.values():
             label.config(text="-")
-        
-        if not self.selected_ordem_id: return
+            
+        if not self.selected_servico_id:
+            return
 
         conn = self.get_db_connection()
         if not conn: return
-            
         try:
             with conn.cursor() as cur:
-                sql_query = """
+                # >>> ATENÇÃO: Query SQL Corrigida <<<
+                # A ligação (JOIN) para papel e cores agora é feita com a tabela 'opm' (ordem_producao_maquinas)
+                sql = """
                     SELECT 
-                        op.cliente, et.descricao AS equipamento, tp.descricao AS tipo_papel,
-                        op.tiragem_em_folhas, qct.descricao AS qtde_cores, op.giros_previstos
-                    FROM ordem_producao AS op
-                    LEFT JOIN equipamentos_tipos AS et ON op.equipamento_id = et.id
-                    LEFT JOIN tipos_papel AS tp ON op.tipo_papel_id = tp.id
-                    LEFT JOIN qtde_cores_tipos AS qct ON op.qtde_cores_id = qct.id
-                    WHERE op.id = %s
+                        op.numero_wo,
+                        op.cliente, 
+                        et.descricao as equipamento_nome,
+                        tp.descricao as tipo_papel,
+                        qc.descricao as qtde_cores,
+                        opm.tiragem_em_folhas,
+                        opm.giros_previstos,
+                        opm.tempo_producao_previsto_ms
+                    FROM ordem_servicos os
+                    JOIN ordem_producao op ON os.ordem_id = op.id
+                    JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
+                    JOIN equipamentos_tipos et ON opm.equipamento_id = et.id
+                    LEFT JOIN tipos_papel tp ON opm.tipo_papel_id = tp.id
+                    LEFT JOIN qtde_cores_tipos qc ON opm.qtde_cores_id = qc.id
+                    WHERE os.id = %s
                 """
-                cur.execute(sql_query, (self.selected_ordem_id,))
-                data = cur.fetchone()
-                
-                if data:
+                cur.execute(sql, (self.selected_servico_id,))
+                result = cur.fetchone()
+
+                if result:
+                    wo_num, cliente, equip, papel, cores, tiragem, giros, tempo_ms = result
+
+                    tempo_s = (tempo_ms / 1000.0) if tempo_ms else 0
+                    tempo_str = self.format_seconds_to_hhmmss(tempo_s)
+
                     info_map = {
-                        'col_cliente': data[0], 'equipment_label': data[1], 'col_tipo_papel': data[2],
-                        'col_tiragem_em_folhas': data[3], 'col_qtde_cores': data[4], 'giros_previstos': data[5]
+                        'col_wo': wo_num,
+                        'col_cliente': cliente,
+                        'equipment_label': equip,
+                        'col_tipo_papel': papel,
+                        'col_qtde_cores': cores,
+                        'col_tiragem_em_folhas': tiragem,
+                        'giros_previstos': giros,
+                        'tempo_previsto': tempo_str
                     }
+
                     for key, value in info_map.items():
-                        if key in self.info_labels:
-                            self.info_labels[key].config(text=(value if value is not None else "-"))
-        except psycopg2.Error as e:
-            messagebox.showerror("Erro ao Carregar", f"Falha ao carregar informações da WO: {e}", parent=self)
+                        widget = self.info_labels.get(key)
+                        if widget:
+                            widget.config(text=value if value is not None else '')
+
+        except Exception as e:
+            messagebox.showerror("Erro de Banco de Dados", f"Erro ao buscar informações do serviço:\n{e}", parent=self)
         finally:
             if conn: conn.close()
 
@@ -390,26 +367,30 @@ class App(Toplevel):
 
     def check_and_restore_state(self):
         if not os.path.exists(self.STATE_FILE) or os.path.getsize(self.STATE_FILE) == 0:
-            self.load_next_wo_in_queue()
+            # CORREÇÃO AQUI:
+            self.load_initial_data()
             return
         try:
             with open(self.STATE_FILE, 'r', encoding='utf-8') as f:
                 state_data = json.load(f)
             
             if not state_data or state_data.get('current_state') == 'IDLE':
-                 if os.path.exists(self.STATE_FILE): os.remove(self.STATE_FILE)
-                 self.load_next_wo_in_queue()
-                 return
+                if os.path.exists(self.STATE_FILE): os.remove(self.STATE_FILE)
+                # CORREÇÃO AQUI:
+                self.load_initial_data()
+                return
 
             if messagebox.askyesno("Restaurar Sessão", "Encontrámos um apontamento não finalizado. Deseja restaurá-lo?"):
                 self.load_state(state_data)
             else:
-                 if os.path.exists(self.STATE_FILE): os.remove(self.STATE_FILE)
-                 self.load_next_wo_in_queue()
+                if os.path.exists(self.STATE_FILE): os.remove(self.STATE_FILE)
+                # CORREÇÃO AQUI:
+                self.load_initial_data()
         except (json.JSONDecodeError, Exception) as e:
             print(f"Erro ao restaurar estado: {e}")
             if os.path.exists(self.STATE_FILE): os.remove(self.STATE_FILE)
-            self.load_next_wo_in_queue()
+            # CORREÇÃO AQUI:
+            self.load_initial_data()
         finally:
             self.update_ui_state()
 
@@ -658,71 +639,128 @@ class App(Toplevel):
             self.stops_tree.insert('', END, values=(stop.get('type', ''), motivo_display, start_str, end_str, duration_str))
 
     def submit_final_production(self):
-        self.production_fields['giros_rodados'].config(state=NORMAL)
-        prod_data = {key: (widget.get().strip() if isinstance(widget, (tb.Entry, tb.Combobox)) else None) for key, widget in self.production_fields.items()}
-        self.production_fields['giros_rodados'].config(state=DISABLED)
+        """
+        Coleta todos os dados, salva o apontamento final na tabela 'apontamento'
+        e, se a produção for parcial, cria uma nova tarefa com a quantidade restante.
+        """
+        # --- 1. Obter e validar dados do formulário ---
+        try:
+            quantidade_produzida_str = self.production_fields['quantidadeproduzida'].get()
+            giros_rodados_str = self.production_fields['giros_rodados'].get()
+            perdas_producao_str = self.production_fields['perdas_producao'].get()
+            motivo_perda_texto = self.production_fields['motivo_perda'].get()
+            impressor_nome = self.initial_fields['impressor'].get()
+            turno_nome = self.initial_fields['turno'].get()
 
-        if not prod_data.get('giros_rodados') or not prod_data.get('quantidadeproduzida'):
-            messagebox.showerror("Validação", self.get_string('final_appointment_validation_error'), parent=self)
+            if not all([quantidade_produzida_str, impressor_nome, turno_nome]):
+                messagebox.showwarning("Campos Obrigatórios", "Quantidade Produzida, Impressor e Turno devem ser preenchidos.", parent=self)
+                return
+            
+            # Converte os valores numéricos
+            quantidade_produzida = int(quantidade_produzida_str)
+            giros_rodados = int(giros_rodados_str) if giros_rodados_str else 0
+            perdas_producao = int(perdas_producao_str) if perdas_producao_str else 0
+
+        except (ValueError, KeyError) as e:
+            messagebox.showerror("Erro de Dados", f"Não foi possível ler os dados do formulário.\nDetalhe: {e}", parent=self)
             return
 
-        final_data = {
-            'servico_id': self.selected_servico_id,
-            'data': date.today(),
-            'horainicio': self.prod_start_time.time() if self.prod_start_time else None,
-            'horafim': self.prod_end_time.time() if self.prod_end_time else None,
-            'giros_rodados': int(prod_data['giros_rodados']) if prod_data.get('giros_rodados') else None,
-            'quantidadeproduzida': int(prod_data['quantidadeproduzida']) if prod_data.get('quantidadeproduzida') else None,
-            'perdas_producao': int(prod_data['perdas_producao']) if prod_data.get('perdas_producao') else None,
-            'motivo_perda_id': self.motivos_perda_data.get(prod_data.get('motivo_perda')),
-        }
-        
         conn = self.get_db_connection()
         if not conn: return
+
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT id FROM impressores WHERE nome = %s", (self.impressor_combobox.get(),))
-                impressor_result = cur.fetchone()
-                if not impressor_result: raise ValueError("Impressor não encontrado")
-                final_data['impressor_id'] = impressor_result[0]
+                # --- 2. Buscar IDs de tabelas relacionadas ---
+                # Buscar ID do Impressor
+                cur.execute("SELECT id FROM impressores WHERE nome = %s", (impressor_nome,))
+                impressor_id = cur.fetchone()[0] if cur.rowcount > 0 else None
 
-                cur.execute("SELECT id FROM turnos_tipos WHERE descricao = %s", (self.turno_combobox.get(),))
-                turno_result = cur.fetchone()
-                if not turno_result: raise ValueError("Turno não encontrado")
-                final_data['turno_id'] = turno_result[0]
+                # Buscar ID do Turno
+                cur.execute("SELECT id FROM turnos_tipos WHERE descricao = %s", (turno_nome,))
+                turno_id = cur.fetchone()[0] if cur.rowcount > 0 else None
 
-                cols = [f'"{k}"' for k, v in final_data.items() if v is not None]
-                vals = {k: v for k, v in final_data.items() if v is not None}
-                placeholders = [f"%({k})s" for k in vals.keys()]
-                
-                query = f"INSERT INTO apontamento ({', '.join(cols)}) VALUES ({', '.join(placeholders)}) RETURNING id"
-                cur.execute(query, vals)
-                apontamento_id = cur.fetchone()[0]
+                # Obter ID do Motivo da Perda (do dicionário já carregado)
+                motivo_perda_id = self.motivos_perda_data.get(motivo_perda_texto)
 
-                for stop in self.all_stops_data:
-                    if stop.get('type') == 'Produção':
-                        cur.execute("INSERT INTO paradas (apontamento_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s)",
-                            (apontamento_id, stop.get('motivo_id'), stop.get('hora_inicio_parada'), stop.get('hora_fim_parada'), stop.get('motivo_extra_detail')))
-                
+                # --- 3. Salvar o apontamento principal ---
+                query_apontamento = """
+                    INSERT INTO apontamento (
+                        servico_id, data, horainicio, horafim, giros_rodados,
+                        quantidadeproduzida, perdas_producao, impressor_id, turno_id, motivo_perda_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """
+                dados_apontamento = (
+                    self.selected_servico_id,
+                    self.prod_start_time.date(),
+                    self.prod_start_time.time(),
+                    self.prod_end_time.time(),
+                    giros_rodados,
+                    quantidade_produzida,
+                    perdas_producao,
+                    impressor_id,
+                    turno_id,
+                    motivo_perda_id
+                )
+                cur.execute(query_apontamento, dados_apontamento)
+
+                # --- 4. Lógica de Produção Parcial ---
+                # Primeiro, buscamos a meta de produção para comparar
+                cur.execute("""
+                    SELECT os.ordem_id, opm.equipamento_id, opm.tiragem_em_folhas
+                    FROM ordem_servicos os
+                    JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
+                    WHERE os.id = %s
+                """, (self.selected_servico_id,))
+                result = cur.fetchone()
+                if not result:
+                    raise Exception("Falha ao encontrar os detalhes do serviço para a lógica de produção parcial.")
+                ordem_id, equipamento_id, tiragem_planejada = result
+
+                if quantidade_produzida < tiragem_planejada:
+                    msg = (f"A quantidade produzida ({quantidade_produzida}) é menor que a planejada ({tiragem_planejada}).\n\n"
+                        "Deseja gerar um novo serviço com a quantidade restante?")
+                    if messagebox.askyesno("Produção Parcial Detectada", msg, parent=self):
+                        quantidade_restante = tiragem_planejada - quantidade_produzida
+                        tempo_restante_ms = quantidade_restante
+
+                        # Cria um novo registro de "trabalho de máquina" para o restante
+                        cur.execute(
+                            """
+                            INSERT INTO ordem_producao_maquinas (ordem_id, equipamento_id, tiragem_em_folhas, giros_previstos, tempo_producao_previsto_ms)
+                            VALUES (%s, %s, %s, 0, %s) RETURNING id;
+                            """,
+                            (ordem_id, equipamento_id, quantidade_restante, tempo_restante_ms)
+                        )
+                        nova_maquina_id = cur.fetchone()[0]
+
+                        # Cria um novo serviço "Pendente" ligado a esse novo trabalho
+                        cur.execute(
+                            """
+                            INSERT INTO ordem_servicos (ordem_id, maquina_id, descricao, status, sequencia)
+                            SELECT %(ordem_id)s, %(maquina_id)s, CONCAT(et.descricao, ' - RESTANTE'), 'Pendente',
+                                (SELECT COALESCE(MAX(sequencia), 0) + 1 FROM ordem_servicos WHERE ordem_id = %(ordem_id)s)
+                            FROM equipamentos_tipos et WHERE et.id = %(equipamento_id)s;
+                            """,
+                            {"ordem_id": ordem_id, "maquina_id": nova_maquina_id, "equipamento_id": equipamento_id}
+                        )
+
+                # --- 5. Finalizar o serviço atual ---
                 cur.execute("UPDATE ordem_servicos SET status = 'Concluído' WHERE id = %s", (self.selected_servico_id,))
-                cur.execute("SELECT COUNT(*) FROM ordem_servicos WHERE ordem_id = %s AND status IN ('Pendente', 'Em Produção')", (self.selected_ordem_id,))
-                if cur.fetchone()[0] == 0:
-                    cur.execute("UPDATE ordem_producao SET status = 'Concluído' WHERE id = %s", (self.selected_ordem_id,))
 
+            # --- 6. Confirmar transações ---
             conn.commit()
+            messagebox.showinfo("Sucesso", "Apontamento finalizado e registrado com sucesso!", parent=self)
             
-            if os.path.exists(self.STATE_FILE):
-                os.remove(self.STATE_FILE)
-
-            messagebox.showinfo("Sucesso", self.get_string('production_saved_success'), parent=self)
+            # --- 7. Limpar e fechar ---
+            self.reset_state()
             self.destroy()
 
-        except (psycopg2.Error, ValueError, KeyError, TypeError) as e:
-            conn.rollback()
-            messagebox.showerror("Erro ao Salvar", self.get_string('production_save_failed', error=e), parent=self)
+        except Exception as e:
+            if conn: conn.rollback()
+            messagebox.showerror("Erro ao Finalizar Apontamento", f"Ocorreu um erro inesperado e nenhuma informação foi salva:\n{e}", parent=self)
         finally:
             if conn: conn.close()
-    
+
     def open_stop_window(self, stop_type):
         callback = self.add_setup_stop if stop_type == 'setup' else self.add_prod_stop
         RealTimeStopWindow(self, self.db_config, callback)
@@ -757,6 +795,69 @@ class App(Toplevel):
             giros_widget.config(state=DISABLED)
             
         except (ValueError, Exception): pass
+
+    def on_equipment_select(self, event=None):
+        """
+        Chamado quando o operador seleciona um equipamento.
+        Carrega a lista de serviços pendentes para aquela máquina.
+        """
+        self.service_combobox.set('')
+        self.service_combobox.config(state='disabled')
+        self.pending_services_data = {}
+        
+        selected_equipment_name = self.equipment_combobox.get()
+        equipment_id = self.equipments_data.get(selected_equipment_name)
+        if not equipment_id: return
+        
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                # Query para buscar serviços pendentes para o equipamento selecionado
+                query = """
+                    SELECT os.id, op.numero_wo, os.descricao
+                    FROM ordem_servicos os
+                    JOIN ordem_producao op ON os.ordem_id = op.id
+                    JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
+                    WHERE opm.equipamento_id = %s AND os.status = 'Pendente'
+                    ORDER BY op.sequencia_producao, os.sequencia;
+                """
+                cur.execute(query, (equipment_id,))
+                services = cur.fetchall()
+                
+                if services:
+                    # Formata o texto para exibição: "WO-123: Cortar Papel"
+                    service_list = [f"{wo}: {desc}" for s_id, wo, desc in services]
+                    self.pending_services_data = {f"{wo}: {desc}": s_id for s_id, wo, desc in services}
+                    self.service_combobox['values'] = service_list
+                    self.service_combobox.config(state='readonly')
+                else:
+                    self.service_combobox.set("Nenhum serviço pendente para esta máquina")
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao carregar serviços: {e}", parent=self)
+        finally:
+            if conn: conn.close()
+
+    def on_service_select(self, event=None):
+        """
+        Chamado quando um serviço é selecionado. Atualiza o painel de informações.
+        """
+        selected_service_text = self.service_combobox.get()
+        self.selected_servico_id = self.pending_services_data.get(selected_service_text)
+        
+        if self.selected_servico_id:
+            self.update_wo_info_panel() # A sua função existente já faz o trabalho certo!
+        
+        self.update_ui_state()
+
+    def format_seconds_to_hhmmss(self, seconds):
+            """Converte um total de segundos para o formato HH:MM:SS."""
+            if not isinstance(seconds, (int, float)) or seconds < 0:
+                return "00:00:00"
+            
+            hours, remainder = divmod(int(seconds), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            return f"{hours:02}:{minutes:02}:{seconds:02}"
 
 class RealTimeStopWindow(Toplevel):
     
