@@ -17,7 +17,7 @@ import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from ttkbootstrap import DateEntry
 from tkinter import (
-    messagebox, Toplevel, Listbox, StringVar,
+    messagebox, Toplevel, Listbox, StringVar, Canvas,
     END, W, E, S, N, CENTER, BOTH, YES, X, Y, RIGHT, LEFT, VERTICAL, DISABLED, NORMAL
 )
 
@@ -79,128 +79,162 @@ class PCPWindow(Toplevel):
         return self.master.get_db_connection()
 
     def create_widgets(self):
-            """Cria e posiciona todos os widgets na janela do PCP com um layout otimizado."""
-            main_frame = tb.Frame(self, padding=15)
-            main_frame.pack(fill=BOTH, expand=True)
+        """Cria e posiciona todos os widgets na janela do PCP com um layout otimizado."""
+        
+        # --- Início da Correção: Estrutura de Rolagem Otimizada ---
 
-            # --- 1. Formulário Principal (Reorganizado em 2 colunas) ---
-            form_frame = tb.LabelFrame(main_frame, text=self.get_string('new_order_section'), bootstyle=PRIMARY, padding=10)
-            form_frame.pack(fill=X, pady=(0, 10), anchor=N)
-            form_frame.grid_columnconfigure((0, 1), weight=1)
+        # 1. Cria o Canvas e a Scrollbar
+        canvas = Canvas(self, borderwidth=0, highlightthickness=0)
+        scrollbar = tb.Scrollbar(self, orient=VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
 
-            # --- Coluna da Esquerda: Dados da Ordem ---
-            left_form_frame = tb.Frame(form_frame)
-            left_form_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-            left_form_frame.grid_columnconfigure(1, weight=1)
+        # 2. Empacota a Scrollbar à direita e o Canvas para preencher o resto
+        scrollbar.pack(side=RIGHT, fill=Y)
+        canvas.pack(side=LEFT, fill=BOTH, expand=True)
 
-            fields = ["numero_wo", "pn_partnumber", "cliente", "data_previsao_entrega"]
-            for i, key in enumerate(fields):
-                config = self.fields_config[key]
-                tb.Label(left_form_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky=W)
-                widget = self.create_widget_from_config(left_form_frame, config)
-                widget.grid(row=i, column=1, padx=5, pady=5, sticky=EW)
-                self.widgets[key] = widget
+        # 3. Cria o frame rolável DENTRO do canvas
+        scrollable_frame = tb.Frame(canvas)
 
-            # --- Coluna da Direita: Acabamentos ---
-            acab_frame_outer = tb.LabelFrame(form_frame, text=self.get_string("Acabamento"), bootstyle=PRIMARY)
-            acab_frame_outer.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
-            acab_frame_outer.grid_rowconfigure(0, weight=1)
-            acab_frame_outer.grid_columnconfigure(0, weight=1)
+        # 4. Coloca o frame rolável dentro do canvas
+        #    Usamos uma tag para facilitar a referência a ele mais tarde
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", tags="scrollable_frame")
+
+        # 5. FUNÇÃO CHAVE: Atualiza a largura do frame interno quando o canvas é redimensionado
+        def on_canvas_configure(event):
+            canvas.itemconfig("scrollable_frame", width=event.width)
+
+        # 6. FUNÇÃO CHAVE: Atualiza a área de rolagem quando o conteúdo do frame muda
+        def on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+
+        # 7. Associa as funções aos eventos corretos
+        canvas.bind("<Configure>", on_canvas_configure)
+        scrollable_frame.bind("<Configure>", on_frame_configure)
+
+        # --- Fim da Correção ---
+
+        # O 'main_frame' original agora é colocado dentro do 'scrollable_frame'
+        main_frame = tb.Frame(scrollable_frame, padding=15)
+        main_frame.pack(fill=BOTH, expand=True)
+
+        # --- 1. Formulário Principal (Reorganizado em 2 colunas) ---
+        form_frame = tb.LabelFrame(main_frame, text=self.get_string('new_order_section'), bootstyle=PRIMARY, padding=10)
+        form_frame.pack(fill=X, pady=(0, 10), anchor=N)
+        form_frame.grid_columnconfigure((0, 1), weight=1)
+
+        # --- Coluna da Esquerda: Dados da Ordem ---
+        left_form_frame = tb.Frame(form_frame)
+        left_form_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        left_form_frame.grid_columnconfigure(1, weight=1)
+
+        fields = ["numero_wo", "pn_partnumber", "cliente", "data_previsao_entrega"]
+        for i, key in enumerate(fields):
+            config = self.fields_config[key]
+            tb.Label(left_form_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky=W)
+            widget = self.create_widget_from_config(left_form_frame, config)
+            widget.grid(row=i, column=1, padx=5, pady=5, sticky=EW)
+            self.widgets[key] = widget
+
+        # --- Coluna da Direita: Acabamentos ---
+        acab_frame_outer = tb.LabelFrame(form_frame, text=self.get_string("Acabamento"), bootstyle=PRIMARY)
+        acab_frame_outer.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        acab_frame_outer.grid_rowconfigure(0, weight=1)
+        acab_frame_outer.grid_columnconfigure(0, weight=1)
+        
+        acab_scrollbar = tb.Scrollbar(acab_frame_outer)
+        acab_scrollbar.grid(row=0, column=1, sticky="ns")
+        
+        acab_widget = Listbox(acab_frame_outer, selectmode="multiple", yscrollcommand=acab_scrollbar.set, exportselection=False)
+        acab_widget.grid(row=0, column=0, sticky="nsew")
+        acab_scrollbar.config(command=acab_widget.yview)
+        self.widgets["acabamento"] = acab_widget
+        
+        # --- 2. Seção de Detalhes por Máquina (Sem alterações na estrutura interna) ---
+        machines_frame = tb.LabelFrame(main_frame, text="Detalhes de Produção por Máquina", bootstyle=INFO, padding=10)
+        machines_frame.pack(fill=X, pady=10)
+        machines_frame.grid_columnconfigure((1, 3), weight=1)
+
+        for i, (key, config) in enumerate(self.machine_fields_left.items()):
+            tb.Label(machines_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky=W)
+            widget = self.create_widget_from_config(machines_frame, config)
+            widget.grid(row=i, column=1, padx=5, pady=5, sticky=EW)
+            self.machine_widgets[key] = widget
+        
+        for i, (key, config) in enumerate(self.machine_fields_right.items()):
+            tb.Label(machines_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=2, padx=5, pady=5, sticky=W)
+            widget = self.create_widget_from_config(machines_frame, config)
+            widget.grid(row=i, column=3, padx=5, pady=5, sticky=EW)
+            self.machine_widgets[key] = widget
             
-            acab_scrollbar = tb.Scrollbar(acab_frame_outer)
-            acab_scrollbar.grid(row=0, column=1, sticky="ns")
-            
-            acab_widget = Listbox(acab_frame_outer, selectmode="multiple", yscrollcommand=acab_scrollbar.set, exportselection=False)
-            acab_widget.grid(row=0, column=0, sticky="nsew")
-            acab_scrollbar.config(command=acab_widget.yview)
-            self.widgets["acabamento"] = acab_widget
-            
-            # --- 2. Seção de Detalhes por Máquina (Sem alterações na estrutura interna) ---
-            machines_frame = tb.LabelFrame(main_frame, text="Detalhes de Produção por Máquina", bootstyle=INFO, padding=10)
-            machines_frame.pack(fill=X, pady=10)
-            machines_frame.grid_columnconfigure((1, 3), weight=1)
+        self.machine_widgets["tiragem_em_folhas"].bind("<KeyRelease>", self._calcular_giros_para_maquina)
+        self.machine_widgets["qtde_cores_id"].bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
+        self.machine_widgets["equipamento_id"].bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
 
-            for i, (key, config) in enumerate(self.machine_fields_left.items()):
-                tb.Label(machines_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky=W)
-                widget = self.create_widget_from_config(machines_frame, config)
-                widget.grid(row=i, column=1, padx=5, pady=5, sticky=EW)
-                self.machine_widgets[key] = widget
-            
-            for i, (key, config) in enumerate(self.machine_fields_right.items()):
-                tb.Label(machines_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=2, padx=5, pady=5, sticky=W)
-                widget = self.create_widget_from_config(machines_frame, config)
-                widget.grid(row=i, column=3, padx=5, pady=5, sticky=EW)
-                self.machine_widgets[key] = widget
-                
-            self.machine_widgets["tiragem_em_folhas"].bind("<KeyRelease>", self._calcular_giros_para_maquina)
-            self.machine_widgets["qtde_cores_id"].bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
-            self.machine_widgets["equipamento_id"].bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
+        tb.Button(machines_frame, text="Adicionar Máquina à Lista", command=self.add_machine_to_list, bootstyle=SUCCESS).grid(row=len(self.machine_fields_left), column=0, columnspan=4, pady=10)
 
-            tb.Button(machines_frame, text="Adicionar Máquina à Lista", command=self.add_machine_to_list, bootstyle=SUCCESS).grid(row=len(self.machine_fields_left), column=0, columnspan=4, pady=10)
+        # --- 3. Tabela de Máquinas e Ações (Sem alterações) ---
+        tree_actions_frame = tb.Frame(main_frame)
+        tree_actions_frame.pack(fill=X, pady=10)
 
-            # --- 3. Tabela de Máquinas e Ações (Sem alterações) ---
-            tree_actions_frame = tb.Frame(main_frame)
-            tree_actions_frame.pack(fill=X, pady=10)
+        cols = ("equipamento", "tiragem", "giros", "cores", "papel", "gramatura", "tempo_previsto")
+        headers = ("Equipamento", "Tiragem", "Giros", "Cores", "Papel", "Gramatura", "Tempo Previsto")
+        self.machines_tree = tb.Treeview(tree_actions_frame, columns=cols, show="headings", height=5)
+        for col, header in zip(cols, headers):
+            self.machines_tree.heading(col, text=header)
+            self.machines_tree.column(col, width=150, anchor=CENTER)
+        self.machines_tree.pack(side=LEFT, fill=X, expand=True)
+        
+        tb.Button(tree_actions_frame, text="Remover Selecionada", command=self.remove_selected_machine, bootstyle=DANGER).pack(side=LEFT, padx=10, fill=Y)
 
-            cols = ("equipamento", "tiragem", "giros", "cores", "papel", "gramatura", "tempo_previsto")
-            headers = ("Equipamento", "Tiragem", "Giros", "Cores", "Papel", "Gramatura", "Tempo Previsto")
-            self.machines_tree = tb.Treeview(tree_actions_frame, columns=cols, show="headings", height=5)
-            for col, header in zip(cols, headers):
-                self.machines_tree.heading(col, text=header)
-                self.machines_tree.column(col, width=150, anchor=CENTER)
-            self.machines_tree.pack(side=LEFT, fill=X, expand=True)
-            
-            tb.Button(tree_actions_frame, text="Remover Selecionada", command=self.remove_selected_machine, bootstyle=DANGER).pack(side=LEFT, padx=10, fill=Y)
+        final_buttons_frame = tb.Frame(main_frame)
+        final_buttons_frame.pack(fill=X, pady=10)
+        tb.Button(final_buttons_frame, text=self.get_string('save_btn'), command=self.save_new_ordem, bootstyle=SUCCESS).pack(side=LEFT, padx=5)
+        tb.Button(final_buttons_frame, text=self.get_string('clear_filters_btn'), command=self.clear_fields, bootstyle=SECONDARY).pack(side=LEFT, padx=5)
 
-            final_buttons_frame = tb.Frame(main_frame)
-            final_buttons_frame.pack(fill=X, pady=10)
-            tb.Button(final_buttons_frame, text=self.get_string('save_btn'), command=self.save_new_ordem, bootstyle=SUCCESS).pack(side=LEFT, padx=5)
-            tb.Button(final_buttons_frame, text=self.get_string('clear_filters_btn'), command=self.clear_fields, bootstyle=SECONDARY).pack(side=LEFT, padx=5)
+        # --- 4. Tabela de Ordens Criadas e Ações (COM ALTERAÇÕES) ---
+        action_frame = tb.Frame(main_frame)
+        action_frame.pack(fill=X, pady=10)
+        
+        self.move_up_button = tb.Button(action_frame, text="Subir na Fila", command=self.move_order_up, bootstyle="primary-outline", state=DISABLED)
+        self.move_up_button.pack(side=LEFT, padx=5)
+        self.move_down_button = tb.Button(action_frame, text="Descer na Fila", command=self.move_order_down, bootstyle="primary-outline", state=DISABLED)
+        self.move_down_button.pack(side=LEFT, padx=(0, 20))
+        self.edit_button = tb.Button(action_frame, text="Alterar Ordem Selecionada", command=self.open_edit_window, bootstyle="info-outline", state=DISABLED)
+        self.edit_button.pack(side=LEFT, padx=5)
+        self.cancel_button = tb.Button(action_frame, text="Cancelar Ordem Selecionada", command=self.cancel_ordem, bootstyle="danger-outline", state=DISABLED)
+        self.cancel_button.pack(side=LEFT, padx=5)
+        tb.Button(action_frame, text="Ver Relatório", command=self.open_report_window, bootstyle="info-outline").pack(side=LEFT, padx=(20, 0))
+        self.export_button = tb.Button(action_frame, text="Exportar para XLSX", command=self.export_to_xlsx, bootstyle="success-outline")
+        self.export_button.pack(side=RIGHT, padx=5)
+        self.pdf_export_button = tb.Button(action_frame, text="Exportar para PDF", command=self.export_to_pdf, bootstyle="danger-outline")
+        self.pdf_export_button.pack(side=RIGHT, padx=5)
+        
+        orders_tree_frame = tb.LabelFrame(main_frame, text="Ordens de Produção Criadas", bootstyle=INFO, padding=10)
+        orders_tree_frame.pack(fill=BOTH, expand=True, pady=10)
+        
+        # ALTERAÇÃO: Adicionada a coluna 'status_atraso'
+        cols_orders = ("sequencia", "id", "wo", "cliente", "progresso", "data_previsao", "status_atraso")
+        headers_orders = ("Seq.", "ID", "WO", "Cliente", "Progresso da Produção", "Data Prev.", "Status Atraso")
+        
+        self.tree = tb.Treeview(orders_tree_frame, columns=cols_orders, show="headings", bootstyle=PRIMARY)
+        for col, header in zip(cols_orders, headers_orders):
+            self.tree.heading(col, text=header)
+            self.tree.column(col, width=120, anchor=W)
 
-            # --- 4. Tabela de Ordens Criadas e Ações (COM ALTERAÇÕES) ---
-            action_frame = tb.Frame(main_frame)
-            action_frame.pack(fill=X, pady=10)
-            
-            self.move_up_button = tb.Button(action_frame, text="Subir na Fila", command=self.move_order_up, bootstyle="primary-outline", state=DISABLED)
-            self.move_up_button.pack(side=LEFT, padx=5)
-            self.move_down_button = tb.Button(action_frame, text="Descer na Fila", command=self.move_order_down, bootstyle="primary-outline", state=DISABLED)
-            self.move_down_button.pack(side=LEFT, padx=(0, 20))
-            self.edit_button = tb.Button(action_frame, text="Alterar Ordem Selecionada", command=self.open_edit_window, bootstyle="info-outline", state=DISABLED)
-            self.edit_button.pack(side=LEFT, padx=5)
-            self.cancel_button = tb.Button(action_frame, text="Cancelar Ordem Selecionada", command=self.cancel_ordem, bootstyle="danger-outline", state=DISABLED)
-            self.cancel_button.pack(side=LEFT, padx=5)
-            tb.Button(action_frame, text="Ver Relatório", command=self.open_report_window, bootstyle="info-outline").pack(side=LEFT, padx=(20, 0))
-            self.export_button = tb.Button(action_frame, text="Exportar para XLSX", command=self.export_to_xlsx, bootstyle="success-outline")
-            self.export_button.pack(side=RIGHT, padx=5)
-            self.pdf_export_button = tb.Button(action_frame, text="Exportar para PDF", command=self.export_to_pdf, bootstyle="danger-outline")
-            self.pdf_export_button.pack(side=RIGHT, padx=5)
-            
-            orders_tree_frame = tb.LabelFrame(main_frame, text="Ordens de Produção Criadas", bootstyle=INFO, padding=10)
-            orders_tree_frame.pack(fill=BOTH, expand=True, pady=10)
-            
-            # ALTERAÇÃO: Adicionada a coluna 'status_atraso'
-            cols_orders = ("sequencia", "id", "wo", "cliente", "progresso", "data_previsao", "status_atraso")
-            headers_orders = ("Seq.", "ID", "WO", "Cliente", "Progresso da Produção", "Data Prev.", "Status Atraso")
-            
-            self.tree = tb.Treeview(orders_tree_frame, columns=cols_orders, show="headings", bootstyle=PRIMARY)
-            for col, header in zip(cols_orders, headers_orders):
-                self.tree.heading(col, text=header)
-                self.tree.column(col, width=120, anchor=W)
+        # Configurações de largura das colunas
+        self.tree.column("progresso", width=250, anchor=W)
+        self.tree.column("sequencia", width=40, anchor=CENTER)
+        self.tree.column("id", width=50, anchor=CENTER)
+        self.tree.column("status_atraso", width=100, anchor=CENTER) # Configuração da nova coluna
 
-            # Configurações de largura das colunas
-            self.tree.column("progresso", width=250, anchor=W)
-            self.tree.column("sequencia", width=40, anchor=CENTER)
-            self.tree.column("id", width=50, anchor=CENTER)
-            self.tree.column("status_atraso", width=100, anchor=CENTER) # Configuração da nova coluna
+        # NOVO: Define a tag de estilo para as linhas atrasadas
+        self.tree.tag_configure('atrasado', foreground='red', font=('-weight bold'))
 
-            # NOVO: Define a tag de estilo para as linhas atrasadas
-            self.tree.tag_configure('atrasado', foreground='red', font=('-weight bold'))
-
-            self.tree.pack(side=LEFT, fill=BOTH, expand=True)
-            scrollbar = tb.Scrollbar(orders_tree_frame, orient=VERTICAL, command=self.tree.yview)
-            scrollbar.pack(side=RIGHT, fill=Y)
-            self.tree.configure(yscrollcommand=scrollbar.set)
-            self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
+        self.tree.pack(side=LEFT, fill=BOTH, expand=True)
+        scrollbar = tb.Scrollbar(orders_tree_frame, orient=VERTICAL, command=self.tree.yview)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
 
     def create_widget_from_config(self, parent, config):
         if config.get("widget") == "Combobox": return tb.Combobox(parent, state="readonly")

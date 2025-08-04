@@ -226,7 +226,3 @@ class LookupTableManagerWindow(Toplevel):
             messagebox.showerror(self.get_string('delete_selected_btn'), self.get_string('db_delete_failed', error=e), parent=self)
         finally:
             if conn: conn.close()    
-# ...
-    # Copie e cole aqui todo o resto dos métodos da classe LookupTableManagerWindow
-    # (set_localized_title, create_manager_ui, on_table_selected, etc.)
-    # ...

@@ -6,7 +6,7 @@ import os
 import psycopg2
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
-from tkinter import messagebox, Toplevel, END, W, E, S, N, CENTER, BOTH, YES, X, DISABLED, NORMAL
+from tkinter import messagebox, Canvas, Toplevel, END, W, E, S, N, CENTER, BOTH, YES, X, DISABLED, NORMAL
 from tkinter.ttk import Treeview
 
 from config import LANGUAGES, LOOKUP_TABLE_SCHEMAS

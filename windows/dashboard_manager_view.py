@@ -49,8 +49,6 @@ class DashboardManagerView(Toplevel):
             messagebox.showerror("Erro de Conexão", f"Não foi possível conectar ao banco de dados:\n{e}", parent=self)
             return None
             
-    # ... (O restante do código da classe que não foi alterado) ...
-
     def create_widgets(self):
         """Cria a estrutura principal da interface com painéis para filtros, KPIs e gráficos."""
         main_frame = tb.Frame(self, padding=15)
@@ -211,6 +209,14 @@ class DashboardManagerView(Toplevel):
             
             with conn:
                 df = pd.read_sql_query(base_query, conn, params=params)
+
+            cols_to_fill = [
+                'meta_qtd', 'prod_qtd', 'perdas_setup', 'perdas_prod',
+                'tempo_setup_s', 'tempo_prod_s', 'tempo_parada_s'
+            ]
+            for col in cols_to_fill:
+                if col in df.columns:
+                    df[col] = df[col].fillna(0)
 
             if df.empty:
                 messagebox.showinfo("Sem Dados", "Nenhum dado encontrado para os filtros selecionados.", parent=self)
