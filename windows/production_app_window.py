@@ -9,7 +9,10 @@ from ttkbootstrap.constants import *
 from tkinter import messagebox, Canvas, Toplevel, END, W, E, S, N, CENTER, BOTH, YES, X, DISABLED, NORMAL
 from tkinter.ttk import Treeview
 
-from config import LANGUAGES, LOOKUP_TABLE_SCHEMAS
+# --- 1. Importações Corrigidas ---
+from languages import LANGUAGES
+from schemas import LOOKUP_TABLE_SCHEMAS
+from database import get_db_connection, release_db_connection
 
 class App(Toplevel):
     STATE_FILE = 'session_state.json'
@@ -19,7 +22,12 @@ class App(Toplevel):
         self.master = master
         self.db_config = db_config
         self.current_language = self.db_config.get('language', 'portugues')
-        self.grab_set()
+        
+        # --- 2. Correção de Janela Modal ---
+        self.transient(master)
+        self.focus_set()
+        # A linha self.grab_set() foi removida.
+
         self.set_localized_title()
         self.geometry("1200x850")
 
@@ -37,13 +45,9 @@ class App(Toplevel):
         self.create_widgets()
         self.load_initial_data()
         
-        # O carregamento inicial agora é tratado pelo check_and_restore_state
         self.after(100, self.check_and_restore_state)
         self.periodic_save()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
-
-    def get_db_connection(self):
-        return self.master.get_db_connection()
 
     def get_string(self, key, **kwargs):
         lang_dict = LANGUAGES.get(self.current_language, LANGUAGES.get('portugues', {}))
@@ -53,76 +57,49 @@ class App(Toplevel):
         self.title(self.get_string('btn_production_entry'))
         
     def create_widgets(self):
+        # (Este método não acede à BD, então permanece igual)
         main_frame = tb.Frame(self, padding=10)
         main_frame.pack(fill=BOTH, expand=YES)
         main_frame.grid_columnconfigure(0, weight=1)
-
         top_frame = tb.Frame(main_frame)
         top_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=5)
         top_frame.grid_columnconfigure(0, weight=1)
         top_frame.grid_columnconfigure(1, weight=1)
-
-        # --- NOVO FLUXO DE SELEÇÃO ---
         selection_frame = tb.LabelFrame(top_frame, text=self.get_string('initial_selection_section'), bootstyle=PRIMARY, padding=15)
         selection_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         selection_frame.grid_columnconfigure(1, weight=1)
-        
-        # Passo 1: Selecionar o Equipamento
         tb.Label(selection_frame, text="Equipamento de Trabalho:").grid(row=0, column=0, sticky=W, padx=5, pady=5)
         self.equipment_combobox = tb.Combobox(selection_frame, state="readonly")
         self.equipment_combobox.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
         self.equipment_combobox.bind("<<ComboboxSelected>>", self.on_equipment_select)
-
-        # Passo 2: Selecionar o Serviço/WO (será preenchido após selecionar a máquina)
         tb.Label(selection_frame, text="Serviço na Fila da Máquina:").grid(row=1, column=0, sticky=W, padx=5, pady=5)
         self.service_combobox = tb.Combobox(selection_frame, state="disabled")
         self.service_combobox.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
         self.service_combobox.bind("<<ComboboxSelected>>", self.on_service_select)
-
-        # Seleção de Impressor e Turno (permanece igual)
         tb.Label(selection_frame, text=self.get_string("printer_label") + ":").grid(row=2, column=0, sticky=W, padx=5, pady=5)
         self.impressor_combobox = tb.Combobox(selection_frame, state="readonly")
         self.impressor_combobox.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
         self.initial_fields['impressor'] = self.impressor_combobox
-        
         tb.Label(selection_frame, text=self.get_string("shift_label") + ":").grid(row=3, column=0, sticky=W, padx=5, pady=5)
         self.turno_combobox = tb.Combobox(selection_frame, state="readonly")
         self.turno_combobox.grid(row=3, column=1, sticky="ew", padx=5, pady=5)
         self.initial_fields['turno'] = self.turno_combobox
-        
-        # --- O resto da UI permanece o mesmo ---
         self.wo_info_frame = tb.LabelFrame(top_frame, text="Informações da Ordem", bootstyle=PRIMARY, padding=15)
         self.wo_info_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
-        
-        info_keys = {
-            'col_wo': 'Nº WO', 'col_cliente': 'Cliente', 'equipment_label': 'Equipamento do Serviço', 
-            'col_tipo_papel': 'Tipo Papel', 'col_tiragem_em_folhas': 'Tiragem Meta',
-            'col_qtde_cores': 'QTDE Cores', 'giros_previstos': 'Giros Previstos',
-            'tempo_previsto': 'Tempo Previsto'
-        }
+        info_keys = {'col_wo': 'Nº WO', 'col_cliente': 'Cliente', 'equipment_label': 'Equipamento do Serviço', 'col_tipo_papel': 'Tipo Papel', 'col_tiragem_em_folhas': 'Tiragem Meta', 'col_qtde_cores': 'QTDE Cores', 'giros_previstos': 'Giros Previstos', 'tempo_previsto': 'Tempo Previsto'}
         for i, (key, text) in enumerate(info_keys.items()):
             display_text = self.get_string(key) if self.get_string(key) != key else text
             tb.Label(self.wo_info_frame, text=f"{display_text}:", font="-weight bold").grid(row=i, column=0, sticky=W, padx=5, pady=2)
             label_widget = tb.Label(self.wo_info_frame, text="-")
             label_widget.grid(row=i, column=1, sticky=W, padx=5, pady=2)
             self.info_labels[key] = label_widget
-
-        for i, (key, text) in enumerate(info_keys.items()):
-            display_text = self.get_string(key) if self.get_string(key) != key else text
-            tb.Label(self.wo_info_frame, text=f"{display_text}:", font="-weight bold").grid(row=i, column=0, sticky=W, padx=5, pady=2)
-            label_widget = tb.Label(self.wo_info_frame, text="-")
-            label_widget.grid(row=i, column=1, sticky=W, padx=5, pady=2)
-            self.info_labels[key] = label_widget
-
         process_frame = tb.Frame(main_frame)
         process_frame.grid(row=1, column=0, columnspan=2, sticky='nsew', pady=5)
         process_frame.grid_columnconfigure(0, weight=1)
         process_frame.grid_columnconfigure(1, weight=1)
-
         self.setup_frame = tb.LabelFrame(process_frame, text=self.get_string('setup_section'), bootstyle=INFO, padding=15)
         self.setup_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         self.setup_frame.grid_columnconfigure(0, weight=1)
-        
         setup_entries_frame = tb.Frame(self.setup_frame)
         setup_entries_frame.pack(fill=X, expand=YES, pady=(0,10))
         setup_fields_defs = {'perdas': 'col_perdas', 'malas': 'col_malas', 'total_lavagens': 'col_total_lavagens', 'numero_inspecao': 'col_numeroinspecao'}
@@ -131,7 +108,6 @@ class App(Toplevel):
             entry = tb.Entry(setup_entries_frame)
             entry.pack(fill=X)
             self.setup_fields[key] = entry
-        
         setup_control_frame = tb.Frame(self.setup_frame)
         setup_control_frame.pack(fill=X, expand=YES)
         self.setup_timer_label = tb.Label(setup_control_frame, text="00:00:00", font=("Helvetica", 20, "bold"))
@@ -140,11 +116,9 @@ class App(Toplevel):
         self.setup_button.pack(pady=5, ipady=5)
         self.setup_stop_button = tb.Button(setup_control_frame, text=self.get_string('point_setup_stop_btn'), command=lambda: self.open_stop_window('setup'), state=DISABLED, width=20)
         self.setup_stop_button.pack(pady=5, ipady=5)
-        
         self.prod_frame = tb.LabelFrame(process_frame, text=self.get_string('production_section'), bootstyle=SUCCESS, padding=15)
         self.prod_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
         self.prod_frame.grid_columnconfigure(0, weight=1)
-
         prod_entries_frame = tb.Frame(self.prod_frame)
         prod_entries_frame.pack(fill=X, expand=YES, pady=(0,10))
         prod_fields_defs = {'giros_rodados': 'col_giros_rodados', 'quantidadeproduzida': 'col_quantidadeproduzida', 'perdas_producao': 'col_perdas_producao'}
@@ -153,15 +127,12 @@ class App(Toplevel):
             entry = tb.Entry(prod_entries_frame)
             entry.pack(fill=X)
             self.production_fields[key] = entry
-
         self.production_fields['quantidadeproduzida'].bind("<KeyRelease>", self._calcular_giros_rodados)
         self.production_fields['giros_rodados'].config(state=DISABLED)
-
         tb.Label(prod_entries_frame, text=self.get_string("col_motivo_perda") + ":").pack(fill=X, pady=2)
         self.motivo_perda_combobox = tb.Combobox(prod_entries_frame, state="readonly")
         self.motivo_perda_combobox.pack(fill=X)
         self.production_fields['motivo_perda'] = self.motivo_perda_combobox
-        
         prod_control_frame = tb.Frame(self.prod_frame)
         prod_control_frame.pack(fill=X, expand=YES)
         self.prod_timer_label = tb.Label(prod_control_frame, text="00:00:00", font=("Helvetica", 20, "bold"))
@@ -170,10 +141,8 @@ class App(Toplevel):
         self.prod_button.pack(pady=5, ipady=5)
         self.prod_stop_button = tb.Button(prod_control_frame, text=self.get_string('point_prod_stop_btn'), command=lambda: self.open_stop_window('production'), state=DISABLED, width=20)
         self.prod_stop_button.pack(pady=5, ipady=5)
-
         stops_frame = tb.LabelFrame(main_frame, text="Histórico de Paradas", padding=10)
         stops_frame.grid(row=2, column=0, columnspan=2, sticky='nsew', pady=5)
-        
         self.stops_tree = Treeview(stops_frame, columns=('tipo', 'motivo', 'inicio', 'fim', 'duracao'), show='headings', height=5)
         self.stops_tree.heading('tipo', text="Tipo"); self.stops_tree.column('tipo', width=80, anchor=CENTER)
         self.stops_tree.heading('motivo', text="Motivo"); self.stops_tree.column('motivo', width=250)
@@ -181,10 +150,8 @@ class App(Toplevel):
         self.stops_tree.heading('fim', text="Fim"); self.stops_tree.column('fim', width=100, anchor=CENTER)
         self.stops_tree.heading('duracao', text="Duração"); self.stops_tree.column('duracao', width=100, anchor=CENTER)
         self.stops_tree.pack(fill=BOTH, expand=YES)
-        
         self.final_register_button = tb.Button(main_frame, text=self.get_string("register_entry_btn"), command=self.submit_final_production, state=DISABLED)
         self.final_register_button.grid(row=3, column=0, columnspan=2, pady=20, ipady=10)
-
         status_bar = tb.Frame(main_frame, padding=(10, 5))
         status_bar.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(10,0))
         tb.Label(status_bar, text="Status:", font=("Helvetica", 12, "bold")).pack(side=LEFT)
@@ -192,15 +159,13 @@ class App(Toplevel):
         self.status_label.pack(side=LEFT, padx=10)
     
     def load_initial_data(self):
-        conn = self.get_db_connection()
-        if not conn: return
+        conn = None
         try:
+            conn = get_db_connection()
             with conn.cursor() as cur:
-                # Carrega dados gerais
                 cur.execute('SELECT descricao, giros FROM qtde_cores_tipos')
                 self.giros_map = {desc: giros if giros is not None else 1 for desc, giros in cur.fetchall()}
                 
-                # Carrega Equipamentos para o primeiro combobox
                 cur.execute('SELECT id, descricao FROM equipamentos_tipos ORDER BY descricao')
                 self.equipments_data = {desc: eq_id for eq_id, desc in cur.fetchall()}
                 self.equipment_combobox['values'] = list(self.equipments_data.keys())
@@ -218,33 +183,22 @@ class App(Toplevel):
         except Exception as e:
             messagebox.showwarning("Erro", f"Falha ao carregar dados iniciais: {e}", parent=self)
         finally:
-            if conn: conn.close()
+            if conn:
+                release_db_connection(conn)
 
     def update_wo_info_panel(self):
-        """Atualiza o painel de informações com detalhes da WO e da MÁQUINA específica."""
-        # Limpa os labels antes de carregar novos dados
-        for label in self.info_labels.values():
-            label.config(text="-")
-            
         if not self.selected_servico_id:
             return
 
-        conn = self.get_db_connection()
-        if not conn: return
+        conn = None
         try:
+            conn = get_db_connection()
             with conn.cursor() as cur:
-                # >>> ATENÇÃO: Query SQL Corrigida <<<
-                # A ligação (JOIN) para papel e cores agora é feita com a tabela 'opm' (ordem_producao_maquinas)
                 sql = """
                     SELECT 
-                        op.numero_wo,
-                        op.cliente, 
-                        et.descricao as equipamento_nome,
-                        tp.descricao as tipo_papel,
-                        qc.descricao as qtde_cores,
-                        opm.tiragem_em_folhas,
-                        opm.giros_previstos,
-                        opm.tempo_producao_previsto_ms
+                        op.numero_wo, op.cliente, et.descricao as equipamento_nome,
+                        tp.descricao as tipo_papel, qc.descricao as qtde_cores,
+                        opm.tiragem_em_folhas, opm.giros_previstos, opm.tempo_producao_previsto_ms
                     FROM ordem_servicos os
                     JOIN ordem_producao op ON os.ordem_id = op.id
                     JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
@@ -258,30 +212,146 @@ class App(Toplevel):
 
                 if result:
                     wo_num, cliente, equip, papel, cores, tiragem, giros, tempo_ms = result
-
                     tempo_s = (tempo_ms / 1000.0) if tempo_ms else 0
-                    tempo_str = self.format_seconds_to_hhmmss(tempo_s)
-
                     info_map = {
-                        'col_wo': wo_num,
-                        'col_cliente': cliente,
-                        'equipment_label': equip,
-                        'col_tipo_papel': papel,
-                        'col_qtde_cores': cores,
-                        'col_tiragem_em_folhas': tiragem,
-                        'giros_previstos': giros,
-                        'tempo_previsto': tempo_str
+                        'col_wo': wo_num, 'col_cliente': cliente, 'equipment_label': equip,
+                        'col_tipo_papel': papel, 'col_qtde_cores': cores, 'col_tiragem_em_folhas': tiragem,
+                        'giros_previstos': giros, 'tempo_previsto': self.format_seconds_to_hhmmss(tempo_s)
                     }
-
                     for key, value in info_map.items():
-                        widget = self.info_labels.get(key)
-                        if widget:
-                            widget.config(text=value if value is not None else '')
-
+                        if key in self.info_labels:
+                            self.info_labels[key].config(text=value if value is not None else '')
         except Exception as e:
             messagebox.showerror("Erro de Banco de Dados", f"Erro ao buscar informações do serviço:\n{e}", parent=self)
         finally:
-            if conn: conn.close()
+            if conn:
+                release_db_connection(conn)
+
+    def on_equipment_select(self, event=None):
+        self.service_combobox.set('')
+        self.service_combobox.config(state='disabled')
+        self.pending_services_data = {}
+        
+        selected_equipment_name = self.equipment_combobox.get()
+        equipment_id = self.equipments_data.get(selected_equipment_name)
+        if not equipment_id: return
+        
+        conn = None
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                query = """
+                    SELECT os.id, op.numero_wo, os.descricao
+                    FROM ordem_servicos os
+                    JOIN ordem_producao op ON os.ordem_id = op.id
+                    JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
+                    WHERE opm.equipamento_id = %s AND os.status = 'Pendente'
+                    ORDER BY op.sequencia_producao, os.sequencia;
+                """
+                cur.execute(query, (equipment_id,))
+                services = cur.fetchall()
+                
+                if services:
+                    service_list = [f"{wo}: {desc}" for s_id, wo, desc in services]
+                    self.pending_services_data = {f"{wo}: {desc}": s_id for s_id, wo, desc in services}
+                    self.service_combobox['values'] = service_list
+                    self.service_combobox.config(state='readonly')
+                else:
+                    self.service_combobox.set("Nenhum serviço pendente para esta máquina")
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao carregar serviços: {e}", parent=self)
+        finally:
+            if conn: 
+                release_db_connection(conn)
+
+    def validate_and_save_setup(self):
+        data = {key: widget.get().strip() for key, widget in self.setup_fields.items()}
+        if not all(data.values()):
+            messagebox.showerror("Campos Obrigatórios", self.get_string('setup_fields_required'), parent=self)
+            return False
+        
+        conn = None
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                params = (
+                    self.setup_start_time.date(), self.setup_start_time, self.setup_end_time,
+                    int(data['perdas']), int(data['malas']), int(data['total_lavagens']), data['numero_inspecao']
+                )
+                if self.setup_id:
+                    query = "UPDATE apontamento_setup SET data_apontamento=%s, hora_inicio=%s, hora_fim=%s, perdas=%s, malas=%s, total_lavagens=%s, numero_inspecao=%s WHERE id=%s"
+                    cur.execute(query, params + (self.setup_id,))
+                    cur.execute("DELETE FROM paradas_setup WHERE setup_id = %s", (self.setup_id,))
+                else:
+                    query = "INSERT INTO apontamento_setup (servico_id, data_apontamento, hora_inicio, hora_fim, perdas, malas, total_lavagens, numero_inspecao) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id"
+                    cur.execute(query, (self.selected_servico_id,) + params)
+                    self.setup_id = cur.fetchone()[0]
+
+                for stop in self.all_stops_data:
+                    if stop.get('type') == 'Setup':
+                        cur.execute("INSERT INTO paradas_setup (setup_id, motivo_id, hora_inicio_parada, hora_fim_parada, motivo_extra_detail) VALUES (%s, %s, %s, %s, %s)",
+                            (self.setup_id, stop.get('motivo_id'), stop.get('hora_inicio_parada'), stop.get('hora_fim_parada'), stop.get('motivo_extra_detail')))
+            
+            conn.commit()
+            messagebox.showinfo("Sucesso", self.get_string('setup_saved_success'), parent=self)
+            return True
+        except (psycopg2.Error, ValueError) as e:
+            if conn: conn.rollback()
+            messagebox.showerror("Erro", self.get_string('setup_save_failed', error=e), parent=self)
+            return False
+        finally:
+            if conn: release_db_connection(conn)
+
+    def submit_final_production(self):
+        try:
+            quantidade_produzida_str = self.production_fields['quantidadeproduzida'].get()
+            impressor_nome = self.initial_fields['impressor'].get()
+            turno_nome = self.initial_fields['turno'].get()
+            if not all([quantidade_produzida_str, impressor_nome, turno_nome]):
+                messagebox.showwarning("Campos Obrigatórios", "Quantidade Produzida, Impressor e Turno devem ser preenchidos.", parent=self)
+                return
+            
+            quantidade_produzida = int(quantidade_produzida_str)
+            giros_rodados = int(self.production_fields['giros_rodados'].get() or 0)
+            perdas_producao = int(self.production_fields['perdas_producao'].get() or 0)
+            motivo_perda_texto = self.production_fields['motivo_perda'].get()
+        except (ValueError, KeyError) as e:
+            messagebox.showerror("Erro de Dados", f"Não foi possível ler os dados do formulário.\nDetalhe: {e}", parent=self)
+            return
+
+        conn = None
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM impressores WHERE nome = %s", (impressor_nome,))
+                impressor_id = cur.fetchone()[0] if cur.rowcount > 0 else None
+                cur.execute("SELECT id FROM turnos_tipos WHERE descricao = %s", (turno_nome,))
+                turno_id = cur.fetchone()[0] if cur.rowcount > 0 else None
+                motivo_perda_id = self.motivos_perda_data.get(motivo_perda_texto)
+
+                query_apontamento = """
+                    INSERT INTO apontamento (servico_id, data, horainicio, horafim, giros_rodados, quantidadeproduzida, perdas_producao, impressor_id, turno_id, motivo_perda_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                """
+                dados_apontamento = (self.selected_servico_id, self.prod_start_time.date(), self.prod_start_time.time(), self.prod_end_time.time(), giros_rodados, quantidade_produzida, perdas_producao, impressor_id, turno_id, motivo_perda_id)
+                cur.execute(query_apontamento, dados_apontamento)
+
+                cur.execute("UPDATE ordem_servicos SET status = 'Concluído' WHERE id = %s", (self.selected_servico_id,))
+
+            conn.commit()
+            messagebox.showinfo("Sucesso", "Apontamento finalizado e registrado com sucesso!", parent=self)
+            self.reset_state()
+            self.destroy()
+        except Exception as e:
+            if conn: conn.rollback()
+            messagebox.showerror("Erro ao Finalizar Apontamento", f"Ocorreu um erro inesperado:\n{e}", parent=self)
+        finally:
+            if conn: release_db_connection(conn)
+
+    def on_close(self):
+        if self.current_state != 'IDLE':
+            self.save_state()
+        self.destroy()
 
     def update_ui_state(self):
         state = self.current_state
@@ -290,42 +360,41 @@ class App(Toplevel):
         is_prod_ready = state == 'PRODUCTION_READY'
         is_prod_running = state == 'PRODUCTION_RUNNING'
         is_finished = state == 'FINISHED'
-
-        for widget in [self.service_combobox, self.impressor_combobox, self.turno_combobox]:
-            widget.config(state='readonly' if is_idle and self.selected_ordem_id else 'disabled')
-
+        
+        has_selection = self.selected_servico_id is not None
+        
+        self.equipment_combobox.config(state='readonly' if is_idle else 'disabled')
+        self.service_combobox.config(state='readonly' if is_idle and self.pending_services_data else 'disabled')
+        self.impressor_combobox.config(state='readonly' if is_idle else 'disabled')
+        self.turno_combobox.config(state='readonly' if is_idle else 'disabled')
+        
         for widget in self.setup_fields.values():
             widget.config(state='normal' if is_setup_running else 'disabled')
-
+            
         for key, widget in self.production_fields.items():
+            is_readonly = isinstance(widget, tb.Combobox) and 'readonly' or 'normal'
             if key != 'giros_rodados':
-                widget.config(state='normal' if is_prod_running or is_finished else 'disabled')
-        if not (is_prod_running or is_finished):
-            self.production_fields['giros_rodados'].config(state='disabled')
-
-        self.setup_button.config(state='normal' if (is_idle and self.selected_ordem_id) or is_setup_running else 'disabled')
-        if is_idle: self.setup_button.config(text=self.get_string('start_setup_btn'))
-        if is_setup_running: self.setup_button.config(text=self.get_string('finish_setup_btn'))
-
+                widget.config(state=is_readonly if is_prod_running or is_finished else 'disabled')
+        
+        self.setup_button.config(state='normal' if (is_idle and has_selection) or is_setup_running else 'disabled')
+        self.setup_button.config(text=self.get_string('finish_setup_btn' if is_setup_running else 'start_setup_btn'))
+        
         self.setup_stop_button.config(state='normal' if is_setup_running else 'disabled')
-
+        
         self.prod_button.config(state='normal' if is_prod_ready or is_prod_running else 'disabled')
-        if is_prod_ready: self.prod_button.config(text=self.get_string('start_production_btn'))
-        if is_prod_running: self.prod_button.config(text=self.get_string('finish_production_btn'))
+        self.prod_button.config(text=self.get_string('finish_production_btn' if is_prod_running else 'start_production_btn'))
 
         self.prod_stop_button.config(state='normal' if is_prod_running else 'disabled')
         self.final_register_button.config(state='normal' if is_finished else 'disabled')
         
         status_map = {
-            'IDLE': ('status_idle', 'secondary'),
-            'SETUP_RUNNING': ('status_setup_running', 'info'),
-            'PRODUCTION_READY': ('status_setup_done', 'primary'),
-            'PRODUCTION_RUNNING': ('status_prod_running', 'success'),
+            'IDLE': ('status_idle', 'secondary'), 'SETUP_RUNNING': ('status_setup_running', 'info'),
+            'PRODUCTION_READY': ('status_setup_done', 'primary'), 'PRODUCTION_RUNNING': ('status_prod_running', 'success'),
             'FINISHED': ('status_prod_done', 'warning')
         }
         status_key, bootstyle = status_map.get(state, ('status_idle', 'secondary'))
         self.status_label.config(text=self.get_string(status_key), bootstyle=bootstyle)
-    
+
     def save_state(self):
         if self.current_state == 'IDLE':
             if os.path.exists(self.STATE_FILE):
