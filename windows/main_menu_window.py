@@ -3,14 +3,11 @@
 import ttkbootstrap as tb
 from tkinter import Toplevel, BOTH, YES, X
 from ttkbootstrap.constants import *
-
-# Importações do nosso projeto
 from config import LANGUAGES
 from ui_components import LookupTableManagerWindow
 from .production_app_window import App
 from .pcp_window import PCPWindow
 from .view_appointments_window import ViewAppointmentsWindow
-# Importação da nova janela do Dashboard
 from .dashboard_manager_view import DashboardManagerView
 
 class MenuPrincipalWindow(tb.Toplevel):

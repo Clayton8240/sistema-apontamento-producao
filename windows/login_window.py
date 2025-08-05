@@ -17,6 +17,7 @@ from database import test_db_connection, get_connection_params
 
 class LoginWindow(tb.Toplevel):
     def __init__(self, master, app_controller, db_config, icon_path=None, logo_path=None):
+
         logging.debug("LoginWindow: init start")
 
         try:

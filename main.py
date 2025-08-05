@@ -46,11 +46,9 @@ class AppController(tk.Tk):
 
         print("AppController: criando LoginWindow")
         login_win = LoginWindow(self, self, self.db_config, icon_path, logo_path)
-        self.after(100, lambda: self.deiconify()) 
-        self.after(500, lambda: print(f"janela login ainda existe? {login_win.winfo_exists()}"))
-        login_win.lift()
-        login_win.focus_force()
+        login_win.protocol("WM_DELETE_WINDOW", self.on_app_close)
         login_win.grab_set()
+        self.deiconify()
         print("AppController: LoginWindow criada e grab_set aplicada")
 
 
