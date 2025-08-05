@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# Ficheiro: sistema-apontamento-producao/windows/login_window.py
 
 import os
 import json
@@ -6,6 +6,8 @@ import base64
 import bcrypt
 import psycopg2
 import ttkbootstrap as tb
+import logging
+import traceback
 from tkinter import messagebox, Toplevel, PhotoImage, END, BOTH, YES, X
 from PIL import Image, ImageTk
 from ttkbootstrap.constants import *
@@ -14,45 +16,52 @@ from languages import LANGUAGES
 from database import test_db_connection, get_connection_params
 
 class LoginWindow(tb.Toplevel):
-    def __init__(self, master, icon_path=None, logo_path=None):
-        super().__init__(master)
-        self.master = master # 'master' é o AppController
-
-        self.db_config = {}
-        self.load_db_config()
-        self.current_language = self.db_config.get('language', 'portugues')
-        self.title("Login - Sistema de Produção")
-        self.geometry("450x400")
-
-        self.icon_image = None
-        self.logo_tk_image = None
+    def __init__(self, master, app_controller, db_config, icon_path=None, logo_path=None):
+        logging.debug("LoginWindow: init start")
 
         try:
-            if icon_path and os.path.exists(icon_path):
-                ico = Image.open(icon_path)
-                self.icon_image = ImageTk.PhotoImage(ico)
-                self.iconphoto(False, self.icon_image)
-        except Exception as e:
-            print(f"Erro ao carregar o ícone '{icon_path}': {e}")
+            super().__init__(master)
+            self.app_controller = app_controller
+            self.db_config = db_config
 
-        try:
+            self.current_language = self.db_config.get('language', 'portugues')
+            self.title("Login - Sistema de Produção")
+            self.geometry("450x400")
+
+            self.logo_tk_image = None
             if logo_path and os.path.exists(logo_path):
-                logo_pil = Image.open(logo_path)
-                logo_pil = logo_pil.resize((200, int(logo_pil.height * (200 / logo_pil.width))), Image.LANCZOS)
-                self.logo_tk_image = ImageTk.PhotoImage(logo_pil)
+                try:
+                    from PIL import Image, ImageTk
+                    logo_pil = Image.open(logo_path).resize((200, 60), Image.LANCZOS)
+                    self.logo_tk_image = ImageTk.PhotoImage(logo_pil)
+                except Exception as e:
+                    logging.warning(f"Erro ao carregar logo: {e}")
+
+            self.create_login_widgets()
+            self.center_window()
+            self.transient(master)
+            self.protocol("WM_DELETE_WINDOW", self.destroy)
+
+            logging.debug("LoginWindow: init complete")
+
         except Exception as e:
-            print(f"Erro ao carregar o logo '{logo_path}': {e}")
-            
-        self.create_login_widgets()
-        self.center_window()
-        self.transient(master)
-        self.grab_set()
+            tb_str = traceback.format_exc()
+            logging.error("Erro ao iniciar LoginWindow:\n%s", tb_str)
+            messagebox.showerror("Erro ao iniciar Login", f"Ocorreu um erro ao abrir a janela de login:\n\n{tb_str}", parent=master)
+            try:
+                self.destroy()
+            except Exception:
+                pass
 
     def handle_login(self, event=None):
         username = self.user_entry.get().strip()
         password = self.pass_entry.get().strip()
         if not username or not password:
             messagebox.showwarning("Campos Vazios", "Por favor, preencha usuário e senha.", parent=self)
+            return
+
+        if not self.db_config:
+            messagebox.showerror("Erro de Configuração", "A configuração do banco de dados não foi encontrada.", parent=self)
             return
 
         conn_check = None
@@ -66,22 +75,17 @@ class LoginWindow(tb.Toplevel):
             if user_data:
                 stored_hash, permission = user_data
                 if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
-                    # --- CORREÇÃO CRÍTICA ---
-                    # Apenas notifica o controlador. Não destrói a si mesma.
-                    self.master.on_login_success(self.db_config, permission)
+                    self.destroy()
+                    self.app_controller.on_login_success(self.db_config, permission)
                 else:
                     messagebox.showerror("Erro de Login", "Senha incorreta.", parent=self)
             else:
                 messagebox.showerror("Erro de Login", "Usuário não encontrado ou inativo.", parent=self)
         except psycopg2.Error as db_error:
             messagebox.showerror("Erro de Banco de Dados", f"Não foi possível verificar as credenciais.\nDetalhes: {db_error}", parent=self)
-        except Exception as e:
-            messagebox.showerror("Erro", f"Ocorreu um erro durante o login: {e}", parent=self)
         finally:
-            if conn_check:
-                conn_check.close()
+            if conn_check: conn_check.close()
     
-    # O resto dos métodos (create_widgets, center_window, etc.) permanecem iguais.
     def center_window(self):
         self.update_idletasks()
         w = self.winfo_width()
@@ -95,18 +99,6 @@ class LoginWindow(tb.Toplevel):
     def get_string(self, key, **kwargs):
         lang_dict = LANGUAGES.get(self.current_language, LANGUAGES['portugues'])
         return lang_dict.get(key, f"_{key}_").format(**kwargs)
-
-    def load_db_config(self):
-        config_path = 'db_config.json'
-        if os.path.exists(config_path) and os.path.getsize(config_path) > 0:
-            try:
-                with open(config_path, 'rb') as f:
-                    encoded_data = f.read()
-                    decoded_data = base64.b64decode(encoded_data)
-                    self.db_config = json.loads(decoded_data)
-            except Exception as e:
-                messagebox.showerror("Erro de Configuração", f"Não foi possível ler o ficheiro 'db_config.json'.\n\nDetalhes: {e}")
-                self.db_config = {}
 
     def create_login_widgets(self):
         for widget in self.winfo_children(): widget.destroy()
@@ -176,6 +168,7 @@ class LoginWindow(tb.Toplevel):
             with open('db_config.json', 'wb') as f:
                 f.write(encoded_data)
             self.db_config = new_config
+            self.app_controller.db_config = new_config # Atualiza a config no controlador
             self.current_language = new_lang
             messagebox.showinfo(self.get_string('save_btn'), self.get_string('config_save_success'), parent=win)
         except Exception as e:

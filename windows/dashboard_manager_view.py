@@ -44,11 +44,12 @@ class DashboardManagerView(Toplevel):
         Usa a função centralizada para obter a conexão com o banco de dados.
         """
         try:
-            return get_db_connection(self.db_config)
+            # A chamada agora é feita sem argumentos, pois o pool já está configurado.
+            return get_db_connection()
         except psycopg2.Error as e:
             messagebox.showerror("Erro de Conexão", f"Não foi possível conectar ao banco de dados:\n{e}", parent=self)
             return None
-            
+
     def create_widgets(self):
         """Cria a estrutura principal da interface com painéis para filtros, KPIs e gráficos."""
         main_frame = tb.Frame(self, padding=15)
