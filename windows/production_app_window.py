@@ -4,7 +4,8 @@ from datetime import datetime, time, date
 import psycopg2
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
-from tkinter import messagebox, Canvas, Toplevel, END, W, E, S, N, CENTER, BOTH, YES, X, DISABLED, NORMAL
+# MOD: Adiciona PanedWindow para um layout redimensionável pelo usuário
+from tkinter import messagebox, Canvas, Toplevel, END, W, E, S, N, CENTER, BOTH, YES, X, DISABLED, NORMAL, VERTICAL
 from tkinter.ttk import Treeview
 
 # --- Importações Corrigidas ---
@@ -23,7 +24,11 @@ class App(Toplevel):
         self.focus_set()
 
         self.set_localized_title()
-        self.geometry("1200x850")
+        # MOD: Remove a geometria fixa e inicia a janela maximizada para se adaptar a qualquer tela.
+        self.state('zoomed')
+        # MOD: Define um tamanho mínimo para garantir a usabilidade em resoluções menores.
+        self.wm_minsize(1024, 768)
+
 
         self.current_state = 'IDLE'
         self.setup_start_time, self.setup_end_time = None, None
@@ -39,7 +44,6 @@ class App(Toplevel):
         self.create_widgets()
         self.load_initial_data()
 
-        # A verificação de estado agora é feita pelo banco de dados
         self.after(100, self.check_and_restore_state_from_db)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
 
@@ -54,46 +58,64 @@ class App(Toplevel):
         self.title(self.get_string('btn_production_entry'))
 
     def create_widgets(self):
-        # (Este método não acede à BD, então permanece igual)
-        main_frame = tb.Frame(self, padding=10)
-        main_frame.pack(fill=BOTH, expand=YES)
-        main_frame.grid_columnconfigure(0, weight=1)
-        top_frame = tb.Frame(main_frame)
-        top_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=5)
-        top_frame.grid_columnconfigure(0, weight=1)
-        top_frame.grid_columnconfigure(1, weight=1)
-        selection_frame = tb.LabelFrame(top_frame, text=self.get_string('initial_selection_section'), bootstyle=PRIMARY, padding=15)
-        selection_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        # MOD: A estrutura principal agora é um PanedWindow para permitir o redimensionamento das seções.
+        main_paned_window = tb.PanedWindow(self, orient=VERTICAL)
+        main_paned_window.pack(fill=BOTH, expand=YES, padx=10, pady=10)
+
+        # --- PAINEL SUPERIOR (Seleção e Informações) ---
+        top_pane = tb.Frame(main_paned_window)
+        main_paned_window.add(top_pane)
+        top_pane.grid_columnconfigure(0, weight=1)
+        top_pane.grid_columnconfigure(1, weight=1) # MOD: Ambas as colunas expandem igualmente
+
+        # Frame de Seleção
+        selection_frame = tb.LabelFrame(top_pane, text=self.get_string('initial_selection_section'), bootstyle=PRIMARY, padding=15)
+        selection_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5), pady=5)
         selection_frame.grid_columnconfigure(1, weight=1)
-        tb.Label(selection_frame, text="Equipamento de Trabalho:").grid(row=0, column=0, sticky=W, padx=5, pady=5)
+        
+        tb.Label(selection_frame, text=self.get_string('equipment_label') + ":").grid(row=0, column=0, sticky=W, padx=5, pady=5)
         self.equipment_combobox = tb.Combobox(selection_frame, state="readonly")
         self.equipment_combobox.grid(row=0, column=1, sticky="ew", padx=5, pady=5)
         self.equipment_combobox.bind("<<ComboboxSelected>>", self.on_equipment_select)
-        tb.Label(selection_frame, text="Serviço na Fila da Máquina:").grid(row=1, column=0, sticky=W, padx=5, pady=5)
+        
+        tb.Label(selection_frame, text=self.get_string('service_on_machine_queue_label')).grid(row=1, column=0, sticky=W, padx=5, pady=5)
         self.service_combobox = tb.Combobox(selection_frame, state="disabled")
         self.service_combobox.grid(row=1, column=1, sticky="ew", padx=5, pady=5)
         self.service_combobox.bind("<<ComboboxSelected>>", self.on_service_select)
+        
         tb.Label(selection_frame, text=self.get_string("printer_label") + ":").grid(row=2, column=0, sticky=W, padx=5, pady=5)
         self.impressor_combobox = tb.Combobox(selection_frame, state="readonly")
         self.impressor_combobox.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
         self.initial_fields['impressor'] = self.impressor_combobox
+        
         tb.Label(selection_frame, text=self.get_string("shift_label") + ":").grid(row=3, column=0, sticky=W, padx=5, pady=5)
         self.turno_combobox = tb.Combobox(selection_frame, state="readonly")
         self.turno_combobox.grid(row=3, column=1, sticky="ew", padx=5, pady=5)
         self.initial_fields['turno'] = self.turno_combobox
-        self.wo_info_frame = tb.LabelFrame(top_frame, text="Informações da Ordem", bootstyle=PRIMARY, padding=15)
-        self.wo_info_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+
+        # Frame de Informações da Ordem
+        self.wo_info_frame = tb.LabelFrame(top_pane, text=self.get_string('order_info_section'), bootstyle=PRIMARY, padding=15)
+        self.wo_info_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0), pady=5)
         info_keys = {'col_wo': 'Nº WO', 'col_cliente': 'Cliente', 'equipment_label': 'Equipamento do Serviço', 'col_tipo_papel': 'Tipo Papel', 'col_tiragem_em_folhas': 'Tiragem Meta', 'col_qtde_cores': 'QTDE Cores', 'giros_previstos': 'Giros Previstos', 'tempo_previsto': 'Tempo Previsto'}
         for i, (key, text) in enumerate(info_keys.items()):
-            display_text = self.get_string(key) if self.get_string(key) != key else text
+            display_text = self.get_string(key) if self.get_string(key) != f"_{key}_" else text
             tb.Label(self.wo_info_frame, text=f"{display_text}:", font="-weight bold").grid(row=i, column=0, sticky=W, padx=5, pady=2)
             label_widget = tb.Label(self.wo_info_frame, text="-")
             label_widget.grid(row=i, column=1, sticky=W, padx=5, pady=2)
             self.info_labels[key] = label_widget
-        process_frame = tb.Frame(main_frame)
-        process_frame.grid(row=1, column=0, columnspan=2, sticky='nsew', pady=5)
+
+        # --- PAINEL INFERIOR (Apontamento e Histórico) ---
+        bottom_pane = tb.Frame(main_paned_window)
+        main_paned_window.add(bottom_pane)
+        bottom_pane.grid_columnconfigure(0, weight=1)
+        bottom_pane.grid_rowconfigure(1, weight=1) # MOD: O histórico expande verticalmente
+
+        process_frame = tb.Frame(bottom_pane)
+        process_frame.grid(row=0, column=0, sticky='nsew', pady=5)
         process_frame.grid_columnconfigure(0, weight=1)
         process_frame.grid_columnconfigure(1, weight=1)
+
+        # Frame de Setup
         self.setup_frame = tb.LabelFrame(process_frame, text=self.get_string('setup_section'), bootstyle=INFO, padding=15)
         self.setup_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         self.setup_frame.grid_columnconfigure(0, weight=1)
@@ -113,6 +135,8 @@ class App(Toplevel):
         self.setup_button.pack(pady=5, ipady=5)
         self.setup_stop_button = tb.Button(setup_control_frame, text=self.get_string('point_setup_stop_btn'), command=lambda: self.open_stop_window('setup'), state=DISABLED, width=20)
         self.setup_stop_button.pack(pady=5, ipady=5)
+
+        # Frame de Produção
         self.prod_frame = tb.LabelFrame(process_frame, text=self.get_string('production_section'), bootstyle=SUCCESS, padding=15)
         self.prod_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
         self.prod_frame.grid_columnconfigure(0, weight=1)
@@ -138,19 +162,31 @@ class App(Toplevel):
         self.prod_button.pack(pady=5, ipady=5)
         self.prod_stop_button = tb.Button(prod_control_frame, text=self.get_string('point_prod_stop_btn'), command=lambda: self.open_stop_window('production'), state=DISABLED, width=20)
         self.prod_stop_button.pack(pady=5, ipady=5)
-        stops_frame = tb.LabelFrame(main_frame, text="Histórico de Paradas", padding=10)
-        stops_frame.grid(row=2, column=0, columnspan=2, sticky='nsew', pady=5)
+
+        # Histórico de Paradas
+        stops_frame = tb.LabelFrame(bottom_pane, text=self.get_string('stops_history_section'), padding=10)
+        stops_frame.grid(row=1, column=0, sticky='nsew', pady=10)
+        stops_frame.grid_columnconfigure(0, weight=1)
+        stops_frame.grid_rowconfigure(0, weight=1)
+        
         self.stops_tree = Treeview(stops_frame, columns=('tipo', 'motivo', 'inicio', 'fim', 'duracao'), show='headings', height=5)
         self.stops_tree.heading('tipo', text="Tipo"); self.stops_tree.column('tipo', width=80, anchor=CENTER)
         self.stops_tree.heading('motivo', text="Motivo"); self.stops_tree.column('motivo', width=250)
         self.stops_tree.heading('inicio', text="Início"); self.stops_tree.column('inicio', width=100, anchor=CENTER)
         self.stops_tree.heading('fim', text="Fim"); self.stops_tree.column('fim', width=100, anchor=CENTER)
         self.stops_tree.heading('duracao', text="Duração"); self.stops_tree.column('duracao', width=100, anchor=CENTER)
-        self.stops_tree.pack(fill=BOTH, expand=YES)
-        self.final_register_button = tb.Button(main_frame, text=self.get_string("register_entry_btn"), command=self.submit_final_production, state=DISABLED)
-        self.final_register_button.grid(row=3, column=0, columnspan=2, pady=20, ipady=10)
-        status_bar = tb.Frame(main_frame, padding=(10, 5))
-        status_bar.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(10,0))
+        self.stops_tree.grid(row=0, column=0, sticky='nsew')
+        
+        stops_scrollbar = tb.Scrollbar(stops_frame, orient=VERTICAL, command=self.stops_tree.yview)
+        stops_scrollbar.grid(row=0, column=1, sticky='ns')
+        self.stops_tree.configure(yscrollcommand=stops_scrollbar.set)
+        
+        # Botão final e Barra de Status
+        self.final_register_button = tb.Button(bottom_pane, text=self.get_string("register_entry_btn"), command=self.submit_final_production, state=DISABLED)
+        self.final_register_button.grid(row=2, column=0, pady=20, ipady=10)
+        
+        status_bar = tb.Frame(bottom_pane, padding=(10, 5))
+        status_bar.grid(row=3, column=0, sticky="ew", pady=(10,0))
         tb.Label(status_bar, text="Status:", font=("Helvetica", 12, "bold")).pack(side=LEFT)
         self.status_label = tb.Label(status_bar, text=self.get_string('status_idle'), font=("Helvetica", 12, "bold"), bootstyle="secondary")
         self.status_label.pack(side=LEFT, padx=10)
@@ -271,7 +307,6 @@ class App(Toplevel):
         try:
             conn = get_db_connection()
             with conn.cursor() as cur:
-                # ATOMICIDADE: Atualiza o status do serviço na mesma transação
                 cur.execute("UPDATE ordem_servicos SET status = 'Em Produção' WHERE id = %s", (self.selected_servico_id,))
 
                 params = (
@@ -391,8 +426,6 @@ class App(Toplevel):
             if conn: release_db_connection(conn)
 
     def on_close(self):
-        # Como o estado agora é gerenciado pelo DB, podemos simplesmente fechar.
-        # Uma verificação extra pode ser adicionada se houver dados não salvos em tela.
         self.destroy()
 
     def update_ui_state(self):
@@ -424,7 +457,6 @@ class App(Toplevel):
         self.setup_stop_button.config(state='normal' if is_setup_running else 'disabled')
         
         self.prod_button.config(state='normal' if is_prod_ready or is_prod_running else 'disabled')
-        # MOD: Alterar estilo e texto do botão de produção
         if is_prod_ready:
             self.prod_button.config(text=f"▶ {self.get_string('start_production_btn')}", bootstyle=SUCCESS)
         else:
@@ -483,8 +515,6 @@ class App(Toplevel):
 
     def load_data_for_restored_service(self):
         """ Carrega informações para preencher a UI ao restaurar. """
-        # Esta função é um placeholder. Seria necessário buscar o nome do equipamento
-        # e do serviço para selecionar os valores corretos nos comboboxes.
         print(f"Restaurando dados para o serviço ID: {self.selected_servico_id}")
         self.on_equipment_select()
         self.update_wo_info_panel()
@@ -533,8 +563,8 @@ class App(Toplevel):
             self.update_setup_timer()
             
             if not self.validate_and_save_setup():
-                self.setup_end_time = None # Reverte se a validação falhar
-                self.update_setup_timer() # Continua o timer
+                self.setup_end_time = None 
+                self.update_setup_timer() 
                 return
             self.current_state = 'PRODUCTION_READY'
 
