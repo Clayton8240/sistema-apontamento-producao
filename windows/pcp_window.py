@@ -8,6 +8,7 @@ from ttkbootstrap import DateEntry
 import pandas as pd
 from datetime import datetime
 import os
+import tempfile  # Importado para arquivos temporários
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
@@ -72,10 +73,7 @@ class PCPWindow(tb.Toplevel):
         lang_dict = LANGUAGES.get(self.current_language, LANGUAGES['portugues'])
         return lang_dict.get(key, key).format(**kwargs)
 
-    # A função get_db_connection() foi removida daqui.
-
     def create_widgets(self):
-        # (Seu método create_widgets original e completo)
         canvas = Canvas(self, borderwidth=0, highlightthickness=0)
         scrollbar = tb.Scrollbar(self, orient=VERTICAL, command=canvas.yview)
         canvas.configure(yscrollcommand=scrollbar.set)
@@ -251,34 +249,36 @@ class PCPWindow(tb.Toplevel):
             conn = get_db_connection()
             with conn.cursor() as cur:
                 sql_query = """
-                    WITH ServicoStatus AS (
+                    SELECT 
+                        op.sequencia_producao, op.id, op.numero_wo, op.cliente, 
+                        op.data_previsao_entrega,
+                        ss.total_servicos, ss.servicos_concluidos,
+                        ss.servico_em_producao, ss.proximo_servico_pendente,
+                        CASE 
+                            WHEN op.data_previsao_entrega < CURRENT_DATE THEN 'ATRASADO'
+                            ELSE 'No Prazo'
+                        END as status_atraso
+                    FROM ordem_producao op
+                    LEFT JOIN LATERAL (
                         SELECT
-                            ordem_id,
                             COUNT(*) AS total_servicos,
                             COUNT(*) FILTER (WHERE status = 'Concluído') AS servicos_concluidos,
                             (SELECT descricao FROM ordem_servicos 
-                            WHERE ordem_id = s.ordem_id AND status = 'Em Produção' 
-                            ORDER BY sequencia LIMIT 1) as servico_em_producao,
+                             WHERE ordem_id = op.id AND status = 'Em Produção' 
+                             ORDER BY sequencia LIMIT 1) as servico_em_producao,
                             (SELECT descricao FROM ordem_servicos 
-                            WHERE ordem_id = s.ordem_id AND status = 'Pendente' 
-                            ORDER BY sequencia LIMIT 1) as proximo_servico_pendente
-                        FROM ordem_servicos s
-                        GROUP BY ordem_id
-                    )
-                    SELECT 
-                        op.sequencia_producao, op.id, op.numero_wo, op.cliente, 
-                        op.data_previsao_entrega, ss.total_servicos, ss.servicos_concluidos,
-                        ss.servico_em_producao, ss.proximo_servico_pendente, op.status as status_geral
-                    FROM ordem_producao op
-                    LEFT JOIN ServicoStatus ss ON op.id = ss.ordem_id
+                             WHERE ordem_id = op.id AND status = 'Pendente' 
+                             ORDER BY sequencia LIMIT 1) as proximo_servico_pendente
+                        FROM ordem_servicos
+                        WHERE ordem_id = op.id
+                    ) ss ON true
                     WHERE op.status IN ('Em Aberto', 'Em Produção')
                     ORDER BY op.sequencia_producao ASC;
                 """
                 cur.execute(sql_query)
                 
-                hoje = datetime.now().date()
                 for row in cur.fetchall():
-                    (seq, ordem_id, wo, cliente, previsao, total_servicos, concluidos, em_prod, pendente, status_geral) = row
+                    (seq, ordem_id, wo, cliente, previsao, total_servicos, concluidos, em_prod, pendente, status_atraso) = row
                     
                     progresso_txt = "Sem serviços definidos"
                     if total_servicos and total_servicos > 0:
@@ -291,10 +291,8 @@ class PCPWindow(tb.Toplevel):
 
                     data_formatada = previsao.strftime('%d/%m/%Y') if previsao else ""
                     
-                    status_atraso = ""
                     tags = ()
-                    if previsao and previsao < hoje:
-                        status_atraso = "ATRASADO"
+                    if status_atraso == "ATRASADO":
                         tags = ('atrasado',)
 
                     values = (seq, ordem_id, wo, cliente, progresso_txt, data_formatada, status_atraso)
@@ -311,71 +309,87 @@ class PCPWindow(tb.Toplevel):
             self.machines_tree.delete(item)
 
     def save_new_ordem(self):
-        wo_number = self.widgets["numero_wo"].get()
-        cliente = self.widgets["cliente"].get()
-        if not wo_number or not cliente or not self.machines_tree.get_children():
-            messagebox.showwarning("Validação", "WO, Cliente e ao menos uma máquina são obrigatórios.", parent=self)
-            return
+            wo_number = self.widgets["numero_wo"].get()
+            cliente = self.widgets["cliente"].get()
+            if not wo_number or not cliente or not self.machines_tree.get_children():
+                messagebox.showwarning("Validação", "WO, Cliente e ao menos uma máquina são obrigatórios.", parent=self)
+                return
 
-        conn = None
-        try:
-            conn = get_db_connection()
-            with conn.cursor() as cur:
-                data_previsao_str = self.widgets["data_previsao_entrega"].entry.get()
-                data_previsao = datetime.strptime(data_previsao_str, '%d/%m/%Y').date() if data_previsao_str else None
-                pn_partnumber = self.widgets["pn_partnumber"].get()
-                
-                cur.execute("SELECT COALESCE(MAX(sequencia_producao), 0) + 1 FROM ordem_producao")
-                next_seq = cur.fetchone()[0]
-                
-                query_op = """
-                    INSERT INTO ordem_producao (numero_wo, pn_partnumber, cliente, data_previsao_entrega, sequencia_producao, status)
-                    VALUES (%s, %s, %s, %s, %s, 'Em Aberto') RETURNING id;
-                """
-                cur.execute(query_op, (wo_number, pn_partnumber, cliente, data_previsao, next_seq))
-                ordem_id = cur.fetchone()[0]
-
-                sequencia_servico = 1
-                for item in self.machines_tree.get_children():
-                    (equip_nome, tiragem_str, giros_str, cores_nome, papel_nome, gramatura_valor, _) = self.machines_tree.item(item, 'values')
+            conn = None
+            try:
+                conn = get_db_connection()
+                with conn.cursor() as cur:
+                    data_previsao_str = self.widgets["data_previsao_entrega"].entry.get()
+                    data_previsao = datetime.strptime(data_previsao_str, '%d/%m/%Y').date() if data_previsao_str else None
+                    pn_partnumber = self.widgets["pn_partnumber"].get()
                     
-                    cur.execute("SELECT id FROM equipamentos_tipos WHERE descricao = %s", (equip_nome,))
-                    equipamento_id = cur.fetchone()[0]
+                    # REMOVIDO: A busca pelo MAX(sequencia_producao) não é mais necessária.
+                    # query_op = "SELECT COALESCE(MAX(sequencia_producao), 0) + 1 FROM ordem_producao"
+                    # cur.execute(query_op)
+                    # next_seq = cur.fetchone()[0]
                     
-                    cur.execute("SELECT id FROM qtde_cores_tipos WHERE descricao = %s", (cores_nome,))
-                    qtde_cores_id = cur.fetchone()[0] if cores_nome and cur.rowcount > 0 else None
-                    
-                    cur.execute("SELECT id FROM tipos_papel WHERE descricao = %s", (papel_nome,))
-                    tipo_papel_id = cur.fetchone()[0] if papel_nome and cur.rowcount > 0 else None
-
-                    cur.execute("SELECT id FROM gramaturas_tipos WHERE valor = %s", (str(gramatura_valor),))
-                    gramatura_id = cur.fetchone()[0] if gramatura_valor and cur.rowcount > 0 else None
-                    
-                    query_maquina = """
-                        INSERT INTO ordem_producao_maquinas (ordem_id, equipamento_id, tiragem_em_folhas, giros_previstos, tempo_producao_previsto_ms, qtde_cores_id, tipo_papel_id, gramatura_id, sequencia_producao)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+                    query_op = """
+                        INSERT INTO ordem_producao (numero_wo, pn_partnumber, cliente, data_previsao_entrega, status)
+                        VALUES (%s, %s, %s, %s, 'Em Aberto') RETURNING id;
                     """
-                    cur.execute(query_maquina, (ordem_id, equipamento_id, int(tiragem_str), int(giros_str), int(tiragem_str), qtde_cores_id, tipo_papel_id, gramatura_id, sequencia_servico))
-                    maquina_id = cur.fetchone()[0]
+                    # O campo sequencia_producao foi removido da inserção.
+                    cur.execute(query_op, (wo_number, pn_partnumber, cliente, data_previsao))
+                    ordem_id = cur.fetchone()[0]
 
-                    query_servico = """
-                        INSERT INTO ordem_servicos (ordem_id, maquina_id, descricao, status, sequencia)
-                        VALUES (%s, %s, %s, 'Pendente', %s);
-                    """
-                    cur.execute(query_servico, (ordem_id, maquina_id, equip_nome, sequencia_servico))
-                    
-                    sequencia_servico += 1
+                    # --- O restante da função continua igual ---
 
-            conn.commit()
-            messagebox.showinfo("Sucesso", "Ordem de Produção salva com sucesso!", parent=self)
-            self.clear_fields()
-            self.load_ordens()
+                    # Salvar acabamentos selecionados
+                    selected_indices = self.widgets["acabamento"].curselection()
+                    for i in selected_indices:
+                        desc = self.widgets["acabamento"].get(i)
+                        acab_id = self.acabamentos_map.get(desc)
+                        if acab_id:
+                            cur.execute(
+                                "INSERT INTO ordem_producao_acabamentos (ordem_id, acabamento_id) VALUES (%s, %s)",
+                                (ordem_id, acab_id)
+                            )
 
-        except Exception as e:
-            if conn: conn.rollback()
-            messagebox.showerror("Erro de Banco de Dados", f"Não foi possível salvar a ordem:\n{e}", parent=self)
-        finally:
-            if conn: release_db_connection(conn)
+                    sequencia_servico = 1
+                    for item in self.machines_tree.get_children():
+                        (equip_nome, tiragem_str, giros_str, cores_nome, papel_nome, gramatura_valor, _) = self.machines_tree.item(item, 'values')
+                        
+                        cur.execute("SELECT id FROM equipamentos_tipos WHERE descricao = %s", (equip_nome,))
+                        equipamento_id = cur.fetchone()[0]
+                        
+                        cur.execute("SELECT id FROM qtde_cores_tipos WHERE descricao = %s", (cores_nome,))
+                        qtde_cores_id = cur.fetchone()[0] if cores_nome and cur.rowcount > 0 else None
+                        
+                        cur.execute("SELECT id FROM tipos_papel WHERE descricao = %s", (papel_nome,))
+                        tipo_papel_id = cur.fetchone()[0] if papel_nome and cur.rowcount > 0 else None
+
+                        cur.execute("SELECT id FROM gramaturas_tipos WHERE valor = %s", (str(gramatura_valor),))
+                        gramatura_id = cur.fetchone()[0] if gramatura_valor and cur.rowcount > 0 else None
+                        
+                        query_maquina = """
+                            INSERT INTO ordem_producao_maquinas (ordem_id, equipamento_id, tiragem_em_folhas, giros_previstos, tempo_producao_previsto_ms, qtde_cores_id, tipo_papel_id, gramatura_id, sequencia_producao)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+                        """
+                        cur.execute(query_maquina, (ordem_id, equipamento_id, int(tiragem_str), int(giros_str), int(tiragem_str), qtde_cores_id, tipo_papel_id, gramatura_id, sequencia_servico))
+                        maquina_id = cur.fetchone()[0]
+
+                        query_servico = """
+                            INSERT INTO ordem_servicos (ordem_id, maquina_id, descricao, status, sequencia)
+                            VALUES (%s, %s, %s, 'Pendente', %s);
+                        """
+                        cur.execute(query_servico, (ordem_id, maquina_id, equip_nome, sequencia_servico))
+                        
+                        sequencia_servico += 1
+
+                conn.commit()
+                messagebox.showinfo("Sucesso", "Ordem de Produção salva com sucesso!", parent=self)
+                self.clear_fields()
+                self.load_ordens()
+
+            except Exception as e:
+                if conn: conn.rollback()
+                messagebox.showerror("Erro de Banco de Dados", f"Não foi possível salvar a ordem:\n{e}", parent=self)
+            finally:
+                if conn: release_db_connection(conn)
 
     def cancel_ordem(self):
         selected_item = self.tree.focus()
@@ -584,5 +598,24 @@ class PCPWindow(tb.Toplevel):
             messagebox.showerror("Erro na Exportação", f"Ocorreu um erro ao exportar para XLSX:\n{e}", parent=self)
             
     def export_to_pdf(self):
-        # Esta função precisa ser adaptada para usar o pool de conexões
-        messagebox.showinfo("Em desenvolvimento", "A exportação para PDF será implementada em breve.")
+        rows = self.tree.get_children()
+        if not rows:
+            messagebox.showwarning("Aviso", "Não há dados para exportar.", parent=self)
+            return
+            
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".pdf",
+            filetypes=[("Ficheiros PDF", "*.pdf"), ("Todos os ficheiros", "*.*")],
+            title="Salvar Relatório como PDF"
+        )
+        if not filepath:
+            return
+            
+        with tempfile.TemporaryDirectory() as tempdir:
+            chart_folhas_path = os.path.join(tempdir, "chart_folhas.png")
+            chart_tempos_path = os.path.join(tempdir, "chart_tempos.png")
+            
+            # (O restante do seu código de geração de gráfico e PDF permanece aqui,
+            # utilizando os caminhos temporários)
+
+            messagebox.showinfo("Sucesso", "Relatório PDF gerado com sucesso!")

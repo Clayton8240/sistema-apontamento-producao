@@ -16,6 +16,14 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
+-- Criação da SEQUENCE para a sequencia_producao
+CREATE SEQUENCE public.ordem_producao_sequencia_producao_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -400,7 +408,7 @@ CREATE TABLE public.ordem_producao (
     acabamento text,
     status character varying(50) DEFAULT 'Em Aberto'::character varying,
     data_cadastro_pcp timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-    sequencia_producao integer
+    sequencia_producao integer DEFAULT nextval('public.ordem_producao_sequencia_producao_seq'::regclass)
 );
 
 
@@ -1320,4 +1328,3 @@ ALTER TABLE ONLY public.apontamento
 --
 -- PostgreSQL database dump complete
 --
-
