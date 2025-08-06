@@ -120,28 +120,42 @@ class PCPWindow(tb.Toplevel):
         acab_scrollbar.config(command=acab_widget.yview)
         self.widgets["acabamento"] = acab_widget
         
+        # MOD: Adicionado espaçamento vertical (pady)
         machines_frame = tb.LabelFrame(main_frame, text="Detalhes de Produção por Máquina", bootstyle=INFO, padding=10)
-        machines_frame.pack(fill=X, pady=10)
-        machines_frame.grid_columnconfigure((1, 3), weight=1)
+        machines_frame.pack(fill=X, pady=15)
+        machines_frame.grid_columnconfigure(0, weight=1)
+        machines_frame.grid_columnconfigure(1, weight=1)
+
+        # MOD: Adicionado sub-frame para Dados da Máquina
+        machine_data_frame = tb.LabelFrame(machines_frame, text="Dados da Máquina", bootstyle=INFO, padding=10)
+        machine_data_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        machine_data_frame.grid_columnconfigure(1, weight=1)
+
+        # MOD: Adicionado sub-frame para Detalhes do Material
+        material_details_frame = tb.LabelFrame(machines_frame, text="Detalhes do Material", bootstyle=INFO, padding=10)
+        material_details_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        material_details_frame.grid_columnconfigure(1, weight=1)
 
         for i, (key, config) in enumerate(self.machine_fields_left.items()):
-            tb.Label(machines_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky='w')
-            widget = self.create_widget_from_config(machines_frame, config)
+            tb.Label(machine_data_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky='w')
+            widget = self.create_widget_from_config(machine_data_frame, config)
             widget.grid(row=i, column=1, padx=5, pady=5, sticky='ew')
             self.machine_widgets[key] = widget
         
         for i, (key, config) in enumerate(self.machine_fields_right.items()):
-            tb.Label(machines_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=2, padx=5, pady=5, sticky='w')
-            widget = self.create_widget_from_config(machines_frame, config)
-            widget.grid(row=i, column=3, padx=5, pady=5, sticky='ew')
+            tb.Label(material_details_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky='w')
+            widget = self.create_widget_from_config(material_details_frame, config)
+            widget.grid(row=i, column=1, padx=5, pady=5, sticky='ew')
             self.machine_widgets[key] = widget
             
         self.machine_widgets["tiragem_em_folhas"].bind("<KeyRelease>", self._calcular_giros_para_maquina)
         self.machine_widgets["qtde_cores_id"].bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
         self.machine_widgets["equipamento_id"].bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
 
-        tb.Button(machines_frame, text="Adicionar Máquina à Lista", command=self.add_machine_to_list, bootstyle=SUCCESS).grid(row=len(self.machine_fields_left), column=0, columnspan=4, pady=10)
+        # MOD: Botão agora está fora dos sub-frames
+        tb.Button(machines_frame, text="➕ Adicionar Máquina à Lista", command=self.add_machine_to_list, bootstyle=SUCCESS).grid(row=1, column=0, columnspan=2, pady=10)
 
+        # MOD: Adicionado espaçamento vertical (pady)
         tree_actions_frame = tb.Frame(main_frame)
         tree_actions_frame.pack(fill=X, pady=10)
 
@@ -153,24 +167,32 @@ class PCPWindow(tb.Toplevel):
             self.machines_tree.column(col, width=150, anchor=CENTER)
         self.machines_tree.pack(side='left', fill=X, expand=True)
         
-        tb.Button(tree_actions_frame, text="Remover Selecionada", command=self.remove_selected_machine, bootstyle=DANGER).pack(side='left', padx=10, fill='y')
+        # MOD: Adicionado ícone ao botão
+        tb.Button(tree_actions_frame, text="🗑️ Remover Selecionada", command=self.remove_selected_machine, bootstyle=DANGER).pack(side='left', padx=10, fill='y')
 
+        # MOD: Adicionado espaçamento vertical (pady)
         final_buttons_frame = tb.Frame(main_frame)
         final_buttons_frame.pack(fill=X, pady=10)
         tb.Button(final_buttons_frame, text=self.get_string('save_btn'), command=self.save_new_ordem, bootstyle=SUCCESS).pack(side='left', padx=5)
         tb.Button(final_buttons_frame, text=self.get_string('clear_filters_btn'), command=self.clear_fields, bootstyle=SECONDARY).pack(side='left', padx=5)
 
+        # MOD: Adicionado espaçamento vertical (pady)
         action_frame = tb.Frame(main_frame)
-        action_frame.pack(fill=X, pady=10)
+        action_frame.pack(fill=X, pady=15)
         
         self.move_up_button = tb.Button(action_frame, text="Subir na Fila", command=self.move_order_up, bootstyle="primary-outline", state=DISABLED)
         self.move_up_button.pack(side='left', padx=5)
         self.move_down_button = tb.Button(action_frame, text="Descer na Fila", command=self.move_order_down, bootstyle="primary-outline", state=DISABLED)
         self.move_down_button.pack(side='left', padx=(0, 20))
-        self.edit_button = tb.Button(action_frame, text="Alterar Ordem Selecionada", command=self.open_edit_window, bootstyle="info-outline", state=DISABLED)
+        
+        # MOD: Adicionado ícone ao botão
+        self.edit_button = tb.Button(action_frame, text="✏️ Alterar Ordem Selecionada", command=self.open_edit_window, bootstyle="info-outline", state=DISABLED)
         self.edit_button.pack(side='left', padx=5)
-        self.cancel_button = tb.Button(action_frame, text="Cancelar Ordem Selecionada", command=self.cancel_ordem, bootstyle="danger-outline", state=DISABLED)
+        
+        # MOD: Adicionado ícone ao botão
+        self.cancel_button = tb.Button(action_frame, text="🗑️ Cancelar Ordem Selecionada", command=self.cancel_ordem, bootstyle="danger-outline", state=DISABLED)
         self.cancel_button.pack(side='left', padx=5)
+        
         tb.Button(action_frame, text="Ver Relatório", command=self.open_report_window, bootstyle="info-outline").pack(side='left', padx=(20, 0))
         self.export_button = tb.Button(action_frame, text="Exportar para XLSX", command=self.export_to_xlsx, bootstyle="success-outline")
         self.export_button.pack(side='right', padx=5)
@@ -192,6 +214,8 @@ class PCPWindow(tb.Toplevel):
         self.tree.column("sequencia", width=40, anchor=CENTER)
         self.tree.column("id", width=50, anchor=CENTER)
         self.tree.column("status_atraso", width=100, anchor=CENTER)
+
+        # MOD: Adicionado negrito para a tag 'atrasado'
         self.tree.tag_configure('atrasado', foreground='red', font=('-weight bold'))
 
         self.tree.pack(side='left', fill=BOTH, expand=True)
@@ -246,6 +270,10 @@ class PCPWindow(tb.Toplevel):
         
         conn = None
         try:
+            # MOD: Adicionado cursor de espera para operação demorada
+            self.config(cursor="watch")
+            self.update_idletasks()
+
             conn = get_db_connection()
             with conn.cursor() as cur:
                 sql_query = """
@@ -292,8 +320,10 @@ class PCPWindow(tb.Toplevel):
                     data_formatada = previsao.strftime('%d/%m/%Y') if previsao else ""
                     
                     tags = ()
+                    # MOD: Adicionado ícone de aviso ao status de atraso
                     if status_atraso == "ATRASADO":
                         tags = ('atrasado',)
+                        status_atraso = f"⚠️ {status_atraso}"
 
                     values = (seq, ordem_id, wo, cliente, progresso_txt, data_formatada, status_atraso)
                     self.tree.insert("", "end", values=values, tags=tags)
@@ -303,6 +333,8 @@ class PCPWindow(tb.Toplevel):
         finally:
             if conn:
                 release_db_connection(conn)
+            # MOD: Restaurado o cursor padrão
+            self.config(cursor="")
 
     def remove_selected_machine(self):
         for item in self.machines_tree.selection():
@@ -323,22 +355,13 @@ class PCPWindow(tb.Toplevel):
                     data_previsao = datetime.strptime(data_previsao_str, '%d/%m/%Y').date() if data_previsao_str else None
                     pn_partnumber = self.widgets["pn_partnumber"].get()
                     
-                    # REMOVIDO: A busca pelo MAX(sequencia_producao) não é mais necessária.
-                    # query_op = "SELECT COALESCE(MAX(sequencia_producao), 0) + 1 FROM ordem_producao"
-                    # cur.execute(query_op)
-                    # next_seq = cur.fetchone()[0]
-                    
                     query_op = """
                         INSERT INTO ordem_producao (numero_wo, pn_partnumber, cliente, data_previsao_entrega, status)
                         VALUES (%s, %s, %s, %s, 'Em Aberto') RETURNING id;
                     """
-                    # O campo sequencia_producao foi removido da inserção.
                     cur.execute(query_op, (wo_number, pn_partnumber, cliente, data_previsao))
                     ordem_id = cur.fetchone()[0]
 
-                    # --- O restante da função continua igual ---
-
-                    # Salvar acabamentos selecionados
                     selected_indices = self.widgets["acabamento"].curselection()
                     for i in selected_indices:
                         desc = self.widgets["acabamento"].get(i)
@@ -382,6 +405,7 @@ class PCPWindow(tb.Toplevel):
 
                 conn.commit()
                 messagebox.showinfo("Sucesso", "Ordem de Produção salva com sucesso!", parent=self)
+                # MOD: Limpar campos após salvar com sucesso
                 self.clear_fields()
                 self.load_ordens()
 
@@ -563,6 +587,7 @@ class PCPWindow(tb.Toplevel):
             values_to_insert = (equipamento, tiragem, giros, cores, papel, gramatura, tempo_formatado)
             self.machines_tree.insert("", "end", values=values_to_insert)
 
+            # MOD: Limpar campos após adicionar máquina à lista
             for widget in self.machine_widgets.values():
                 if isinstance(widget, tb.Entry): widget.delete(0, 'end')
                 elif isinstance(widget, tb.Combobox): widget.set('')
@@ -614,9 +639,6 @@ class PCPWindow(tb.Toplevel):
         with tempfile.TemporaryDirectory() as tempdir:
             chart_folhas_path = os.path.join(tempdir, "chart_folhas.png")
             chart_tempos_path = os.path.join(tempdir, "chart_tempos.png")
-            
-            # (O restante do seu código de geração de gráfico e PDF permanece aqui,
-            # utilizando os caminhos temporários)
 
             messagebox.showinfo("Sucesso", "Relatório PDF gerado com sucesso!")
 

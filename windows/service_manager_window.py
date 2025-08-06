@@ -37,9 +37,12 @@ class ServiceManagerWindow(Toplevel):
 
         btn_frame = tb.Frame(main_frame)
         btn_frame.pack(fill=X, pady=(0, 10))
-        tb.Button(btn_frame, text=self.get_string("add_service_btn"), command=self.add_edit_service, bootstyle="success-outline").pack(side=LEFT, padx=5)
-        tb.Button(btn_frame, text=self.get_string("edit_service_btn"), command=lambda: self.add_edit_service(edit_mode=True), bootstyle="info-outline").pack(side=LEFT, padx=5)
-        tb.Button(btn_frame, text=self.get_string("delete_service_btn"), command=self.delete_service, bootstyle="danger-outline").pack(side=LEFT, padx=5)
+        # MOD: Adicionado ícone ao botão
+        tb.Button(btn_frame, text=f"➕ {self.get_string('add_service_btn')}", command=self.add_edit_service, bootstyle="success-outline").pack(side=LEFT, padx=5)
+        # MOD: Adicionado ícone ao botão
+        tb.Button(btn_frame, text=f"✏️ {self.get_string('edit_service_btn')}", command=lambda: self.add_edit_service(edit_mode=True), bootstyle="info-outline").pack(side=LEFT, padx=5)
+        # MOD: Adicionado ícone ao botão
+        tb.Button(btn_frame, text=f"🗑️ {self.get_string('delete_service_btn')}", command=self.delete_service, bootstyle="danger-outline").pack(side=LEFT, padx=5)
 
         tree_frame = tb.LabelFrame(main_frame, text=self.get_string("services_section_title"), bootstyle=PRIMARY, padding=10)
         tree_frame.pack(fill=BOTH, expand=YES)
@@ -102,7 +105,9 @@ class ServiceManagerWindow(Toplevel):
         
         form_frame.grid_columnconfigure(1, weight=1)
 
-        btn_save = tb.Button(form_frame, text=self.get_string("save_btn"), bootstyle=SUCCESS,
+        # MOD: Alterar texto do botão para "Salvar Alterações" em modo de edição
+        button_text = self.get_string("save_changes_btn") if edit_mode else self.get_string("save_btn")
+        btn_save = tb.Button(form_frame, text=button_text, bootstyle=SUCCESS,
                              command=lambda: self.save_service(win, service_id, seq_entry.get(), desc_entry.get()))
         btn_save.grid(row=2, columnspan=2, pady=10)
 

@@ -37,8 +37,9 @@ class UserManagerWindow(Toplevel):
         btn_frame = tb.Frame(main_frame)
         btn_frame.pack(fill=X, pady=(0, 10))
         
-        tb.Button(btn_frame, text="Adicionar Novo", bootstyle="success-outline", command=self.open_add_edit_dialog).pack(side=LEFT, padx=5)
-        tb.Button(btn_frame, text="Editar Selecionado", bootstyle="info-outline", command=lambda: self.open_add_edit_dialog(edit_mode=True)).pack(side=LEFT, padx=5)
+        # MOD: Adicionados ícones aos botões
+        tb.Button(btn_frame, text="➕ Adicionar Novo", bootstyle="success-outline", command=self.open_add_edit_dialog).pack(side=LEFT, padx=5)
+        tb.Button(btn_frame, text="✏️ Editar Selecionado", bootstyle="info-outline", command=lambda: self.open_add_edit_dialog(edit_mode=True)).pack(side=LEFT, padx=5)
         tb.Button(btn_frame, text="Ativar/Desativar", bootstyle="warning-outline", command=self.toggle_user_status).pack(side=LEFT, padx=5)
         tb.Button(btn_frame, text="Redefinir Senha", bootstyle="danger-outline", command=self.reset_password).pack(side=LEFT, padx=5)
 
@@ -125,7 +126,9 @@ class UserManagerWindow(Toplevel):
             confirm_entry.grid(row=3, column=1, padx=5, pady=5, sticky=EW)
 
         # --- Botão Salvar ---
-        btn_save = tb.Button(form_frame, text="Salvar", bootstyle=SUCCESS,
+        # MOD: Alterar texto do botão para "Salvar Alterações" em modo de edição
+        button_text = "Salvar Alterações" if edit_mode else "Salvar"
+        btn_save = tb.Button(form_frame, text=button_text, bootstyle=SUCCESS,
                              command=lambda: self.save_user(
                                  dialog, user_id, user_entry.get(), perm_combo.get(), 
                                  pass_entry.get() if pass_entry else None, 

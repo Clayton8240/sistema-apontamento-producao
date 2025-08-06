@@ -100,6 +100,7 @@ class EditOrdemWindow(Toplevel):
 
         btn_frame = tb.Frame(main_frame)
         btn_frame.pack(pady=10)
+        # MOD: Padronização do texto do botão para "Salvar Alterações"
         tb.Button(btn_frame, text="Salvar Alterações", command=self.save_changes, bootstyle=SUCCESS).pack(side=LEFT, padx=5)
         tb.Button(btn_frame, text="Cancelar", command=self.destroy, bootstyle=SECONDARY).pack(side=LEFT, padx=5)
 

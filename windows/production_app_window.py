@@ -424,7 +424,12 @@ class App(Toplevel):
         self.setup_stop_button.config(state='normal' if is_setup_running else 'disabled')
         
         self.prod_button.config(state='normal' if is_prod_ready or is_prod_running else 'disabled')
-        self.prod_button.config(text=self.get_string('finish_production_btn' if is_prod_running else 'start_production_btn'))
+        # MOD: Alterar estilo e texto do botão de produção
+        if is_prod_ready:
+            self.prod_button.config(text=f"▶ {self.get_string('start_production_btn')}", bootstyle=SUCCESS)
+        else:
+            self.prod_button.config(text=self.get_string('finish_production_btn' if is_prod_running else 'start_production_btn'), bootstyle="success")
+
 
         self.prod_stop_button.config(state='normal' if is_prod_running else 'disabled')
         self.final_register_button.config(state='normal' if is_finished else 'disabled')
