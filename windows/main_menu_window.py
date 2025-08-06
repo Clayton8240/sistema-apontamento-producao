@@ -1,14 +1,17 @@
-# -*- coding: utf-8 -*-
+# Ficheiro: sistema-apontamento-producao/windows/main_menu_window.py
 
 import ttkbootstrap as tb
 from tkinter import Toplevel, BOTH, YES, X
 from ttkbootstrap.constants import *
+
+# Importações de componentes e janelas
 from config import LANGUAGES
 from ui_components import LookupTableManagerWindow
 from .production_app_window import App
 from .pcp_window import PCPWindow
 from .view_appointments_window import ViewAppointmentsWindow
 from .dashboard_manager_view import DashboardManagerView
+from .user_manager_window import UserManagerWindow # <-- NOVA IMPORTAÇÃO
 
 class MenuPrincipalWindow(tb.Toplevel):
     def __init__(self, master, db_config):
@@ -28,7 +31,9 @@ class MenuPrincipalWindow(tb.Toplevel):
         self.create_widgets()
     
     def get_string(self, key, **kwargs):
-        return LANGUAGES.get(self.current_language, LANGUAGES['portugues']).get(key, f"_{key}_").format(**kwargs)
+        # Acessa o dicionário de idiomas e formata a string
+        lang_dict = LANGUAGES.get(self.current_language, LANGUAGES.get('portugues', {}))
+        return lang_dict.get(key, f"_{key}_").format(**kwargs)
 
     def set_localized_title(self):
         self.title(self.get_string('main_menu_title'))
@@ -47,8 +52,6 @@ class MenuPrincipalWindow(tb.Toplevel):
         tb.Button(main_frame, text=self.get_string('btn_pcp_management'), bootstyle=btn_style, command=self.open_pcp_window).pack(fill=X, **btn_padding)
         tb.Button(main_frame, text=self.get_string('btn_view_entries'), bootstyle=btn_style, command=self.open_view_window).pack(fill=X, **btn_padding)
         
-        # --- BOTÃO CORRIGIDO ---
-        # O 'command' agora aponta para a função 'open_manager_dashboard'
         tb.Button(main_frame, text="Dashboard Gerencial", bootstyle="success-outline", command=self.open_manager_dashboard).pack(fill=X, **btn_padding)
 
     def create_menu(self):
@@ -56,6 +59,10 @@ class MenuPrincipalWindow(tb.Toplevel):
         config_menu = tb.Menu(self.menubar, tearoff=0)
         config_menu.add_command(label=self.get_string('menu_db_config'), command=lambda: self.master.open_configure_db_window(self))
         config_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self, self.db_config, self.refresh_main_pcp_comboboxes))
+        
+        # --- NOVA OPÇÃO DE MENU ---
+        config_menu.add_command(label="Gerenciar Usuários", command=self.open_user_manager)
+
         self.menubar.add_cascade(label=self.get_string('menu_settings'), menu=config_menu)
         self.config(menu=self.menubar)
     
@@ -63,6 +70,7 @@ class MenuPrincipalWindow(tb.Toplevel):
         if 'pcp' in self.open_windows and self.open_windows['pcp'].winfo_exists():
             self.open_windows['pcp'].load_all_combobox_data()
 
+    # --- FUNÇÕES PARA ABRIR JANELAS (open_..._window) ---
     def open_production_window(self):
         if 'production' not in self.open_windows or not self.open_windows['production'].winfo_exists():
             self.open_windows['production'] = App(master=self, db_config=self.db_config)
@@ -84,14 +92,20 @@ class MenuPrincipalWindow(tb.Toplevel):
         else:
             self.open_windows['view'].lift()
     
-    # --- FUNÇÃO PARA ABRIR O DASHBOARD ---
-    # Esta função agora será chamada pelo botão corretamente
     def open_manager_dashboard(self):
         if 'dashboard' not in self.open_windows or not self.open_windows['dashboard'].winfo_exists():
             self.open_windows['dashboard'] = DashboardManagerView(master=self, db_config=self.db_config)
             self.open_windows['dashboard'].protocol("WM_DELETE_WINDOW", lambda: self.on_window_close('dashboard'))
         else:
             self.open_windows['dashboard'].lift()
+
+    # --- NOVA FUNÇÃO PARA ABRIR O GERENCIADOR DE USUÁRIOS ---
+    def open_user_manager(self):
+        if 'user_manager' not in self.open_windows or not self.open_windows['user_manager'].winfo_exists():
+            self.open_windows['user_manager'] = UserManagerWindow(master=self, db_config=self.db_config)
+            self.open_windows['user_manager'].protocol("WM_DELETE_WINDOW", lambda: self.on_window_close('user_manager'))
+        else:
+            self.open_windows['user_manager'].lift()
 
     def on_window_close(self, window_key):
         if window_key in self.open_windows:

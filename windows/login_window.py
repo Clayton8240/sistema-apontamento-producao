@@ -11,15 +11,17 @@ import traceback
 from tkinter import messagebox, Toplevel, PhotoImage, END, BOTH, YES, X
 from PIL import Image, ImageTk
 from ttkbootstrap.constants import *
+import keyring  # Importa a biblioteca keyring
 
 from languages import LANGUAGES
 from database import test_db_connection, get_connection_params
 
+# Nome do serviço para identificar a nossa aplicação no keyring
+KEYRING_SERVICE_NAME = "sistema-apontamento-producao"
+
 class LoginWindow(tb.Toplevel):
     def __init__(self, master, app_controller, db_config, icon_path=None, logo_path=None):
-
         logging.debug("LoginWindow: init start")
-
         try:
             super().__init__(master)
             self.app_controller = app_controller
@@ -32,7 +34,6 @@ class LoginWindow(tb.Toplevel):
             self.logo_tk_image = None
             if logo_path and os.path.exists(logo_path):
                 try:
-                    from PIL import Image, ImageTk
                     logo_pil = Image.open(logo_path).resize((200, 60), Image.LANCZOS)
                     self.logo_tk_image = ImageTk.PhotoImage(logo_pil)
                 except Exception as e:
@@ -41,10 +42,8 @@ class LoginWindow(tb.Toplevel):
             self.create_login_widgets()
             self.center_window()
             self.transient(master)
-            self.protocol("WM_DELETE_WINDOW", self.destroy)
-
+            
             logging.debug("LoginWindow: init complete")
-
         except Exception as e:
             tb_str = traceback.format_exc()
             logging.error("Erro ao iniciar LoginWindow:\n%s", tb_str)
@@ -61,13 +60,23 @@ class LoginWindow(tb.Toplevel):
             messagebox.showwarning("Campos Vazios", "Por favor, preencha usuário e senha.", parent=self)
             return
 
-        if not self.db_config:
-            messagebox.showerror("Erro de Configuração", "A configuração do banco de dados não foi encontrada.", parent=self)
+        if not self.db_config or not self.db_config.get('usuário'):
+            messagebox.showerror("Erro de Configuração", "A configuração do banco de dados não foi encontrada ou está incompleta.", parent=self)
             return
+            
+        # *** ALTERAÇÃO AQUI: Obter a senha do keyring ***
+        db_password = keyring.get_password(KEYRING_SERVICE_NAME, self.db_config.get('usuário'))
+        if not db_password:
+            messagebox.showerror("Erro de Configuração", "Senha do banco de dados não encontrada. Por favor, configure a conexão novamente.", parent=self)
+            return
+
+        # Adiciona a senha ao dicionário de configuração temporariamente para a conexão
+        temp_db_config = self.db_config.copy()
+        temp_db_config['senha'] = db_password
 
         conn_check = None
         try:
-            conn_params = get_connection_params(self.db_config)
+            conn_params = get_connection_params(temp_db_config)
             conn_check = psycopg2.connect(**conn_params)
             with conn_check.cursor() as cur:
                 cur.execute("SELECT senha_hash, permissao FROM usuarios WHERE nome_usuario = %s AND ativo = TRUE", (username,))
@@ -77,7 +86,7 @@ class LoginWindow(tb.Toplevel):
                 stored_hash, permission = user_data
                 if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
                     self.destroy()
-                    self.app_controller.on_login_success(self.db_config, permission)
+                    self.app_controller.on_login_success(temp_db_config, permission)
                 else:
                     messagebox.showerror("Erro de Login", "Senha incorreta.", parent=self)
             else:
@@ -137,11 +146,23 @@ class LoginWindow(tb.Toplevel):
         
         labels = [("host", 'host_label'), ("porta", 'port_label'), ("usuário", 'user_label'), ("senha", 'password_label'), ("banco", 'db_label')]
         entries = {}
+        
+        # *** ALTERAÇÃO AQUI: Recupera a senha do keyring para exibir (se existir) ***
+        db_user = self.db_config.get('usuário', '')
+        saved_password = keyring.get_password(KEYRING_SERVICE_NAME, db_user) if db_user else ''
+
         for i, (key, label_key) in enumerate(labels):
             tb.Label(frame, text=self.get_string(label_key) + ":").grid(row=i, column=0, padx=5, pady=5, sticky="w")
             e = tb.Entry(frame, show='*' if key == "senha" else '')
             e.grid(row=i, column=1, padx=5, pady=5, sticky="ew")
-            e.insert(0, self.db_config.get(key, ''))
+            
+            # Preenche o campo de senha com o valor do keyring
+            if key == "senha":
+                if saved_password:
+                    e.insert(0, saved_password)
+            else:
+                e.insert(0, self.db_config.get(key, ''))
+            
             entries[key] = e
         
         tb.Label(frame, text=self.get_string('language_label') + ":").grid(row=len(labels), column=0, padx=5, pady=5, sticky="w")
@@ -158,18 +179,41 @@ class LoginWindow(tb.Toplevel):
         tb.Button(btn_frame, text=self.get_string('save_btn'), bootstyle="success", command=lambda: self.save_and_close_config(entries, lang_selector, win)).pack(side="left", padx=5)
 
     def save_and_close_config(self, entries, lang_selector, win):
-        new_config = {k: v.get() for k, v in entries.items()}
+        new_config = {}
+        password_to_save = None
+        db_user_to_save = None
+
+        # Separa a senha dos outros dados de configuração
+        for key, widget in entries.items():
+            if key == "senha":
+                password_to_save = widget.get()
+            else:
+                new_config[key] = widget.get()
+                if key == "usuário":
+                    db_user_to_save = widget.get()
+
         new_config['tabela'] = self.db_config.get('tabela', 'apontamento')
         new_lang = lang_selector.get().lower()
         new_config['language'] = new_lang
         
         try:
+            # *** ALTERAÇÃO AQUI: Salva a senha no keyring e o resto no JSON ***
+            if db_user_to_save and password_to_save:
+                keyring.set_password(KEYRING_SERVICE_NAME, db_user_to_save, password_to_save)
+            elif db_user_to_save: # Se a senha for apagada, remove do keyring
+                try:
+                    keyring.delete_password(KEYRING_SERVICE_NAME, db_user_to_save)
+                except keyring.errors.PasswordDeleteError:
+                    pass # Ignora o erro se a senha não existir para ser deletada
+
+            # Salva o resto da configuração (sem a senha) no arquivo
             config_json = json.dumps(new_config, indent=4)
             encoded_data = base64.b64encode(config_json.encode('utf-8'))
             with open('db_config.json', 'wb') as f:
                 f.write(encoded_data)
+                
             self.db_config = new_config
-            self.app_controller.db_config = new_config # Atualiza a config no controlador
+            self.app_controller.db_config = new_config
             self.current_language = new_lang
             messagebox.showinfo(self.get_string('save_btn'), self.get_string('config_save_success'), parent=win)
         except Exception as e:
