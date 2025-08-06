@@ -6,6 +6,7 @@ from ttkbootstrap.constants import *
 from tkinter import messagebox, Toplevel, END, BOTH, YES, X, W, LEFT, CENTER, EW
 
 from config import LANGUAGES
+from database import get_db_connection, release_db_connection
 
 class ServiceManagerWindow(Toplevel):
     def __init__(self, master, db_config, ordem_id, wo_number, refresh_callback=None):
@@ -69,7 +70,7 @@ class ServiceManagerWindow(Toplevel):
         except psycopg2.Error as e:
             messagebox.showerror("Erro", f"Falha ao carregar etapas: {e}", parent=self)
         finally:
-            if conn: conn.close()
+            if conn: release_db_connection(conn)
 
     def add_edit_service(self, edit_mode=False):
         service_id, current_seq, current_desc = None, "", ""
@@ -130,7 +131,7 @@ class ServiceManagerWindow(Toplevel):
             conn.rollback()
             messagebox.showerror("Erro", self.get_string("service_save_failed", error=e), parent=win)
         finally:
-            if conn: conn.close()
+            if conn: release_db_connection(conn)
     
     def delete_service(self):
         selected_item = self.tree.focus()
@@ -157,4 +158,4 @@ class ServiceManagerWindow(Toplevel):
             conn.rollback()
             messagebox.showerror("Erro", self.get_string("service_delete_failed", error=e), parent=self)
         finally:
-            if conn: conn.close()
+            if conn: release_db_connection(conn)

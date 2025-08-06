@@ -422,10 +422,6 @@ class PCPWindow(tb.Toplevel):
         finally:
             if conn: release_db_connection(conn)
             
-    # --- Demais métodos da classe ---
-    # (open_edit_window, open_report_window, export_to_xlsx, etc. permanecem os mesmos,
-    # mas devem ser adaptados para usar o pool de conexões se fizerem acesso ao DB)
-
     def open_edit_window(self):
         selected_item = self.tree.focus()
         if not selected_item:

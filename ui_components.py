@@ -11,6 +11,7 @@ from tkinter import messagebox, Toplevel, END, CENTER
 
 # Importações do nosso projeto
 from config import LOOKUP_TABLE_SCHEMAS
+from database import get_db_connection, release_db_connection # ADICIONADO
    
 class LookupTableManagerWindow(Toplevel):
     lookup_table_schemas = LOOKUP_TABLE_SCHEMAS
@@ -39,6 +40,7 @@ class LookupTableManagerWindow(Toplevel):
         self.title(self.get_string('manager_title'))
 
     def get_db_connection(self):
+        # Acessa o método do master, que já está configurado para usar o pool
         return self.master.get_db_connection()
 
     def create_manager_ui(self):
@@ -102,7 +104,7 @@ class LookupTableManagerWindow(Toplevel):
         except psycopg2.Error as e:
             messagebox.showerror(self.get_string('db_load_table_failed'), self.get_string('db_load_table_failed', display_name=self.get_string(schema['display_name_key']), error=e), parent=self)
         finally:
-            if conn: conn.close()
+            if conn: release_db_connection(conn) # CORRIGIDO
 
     def open_add_edit_window(self, edit_mode=False):
         if not self.current_table:
@@ -193,7 +195,7 @@ class LookupTableManagerWindow(Toplevel):
             conn.rollback()
             messagebox.showerror(self.get_string('db_save_failed'), self.get_string('db_save_failed', error=e), parent=window)
         finally:
-            if conn: conn.close()
+            if conn: release_db_connection(conn) # CORRIGIDO
 
     def delete_selected_entry(self):
         item = self.treeview.focus()
@@ -225,4 +227,4 @@ class LookupTableManagerWindow(Toplevel):
             conn.rollback()
             messagebox.showerror(self.get_string('delete_selected_btn'), self.get_string('db_delete_failed', error=e), parent=self)
         finally:
-            if conn: conn.close()    
+            if conn: release_db_connection(conn) # CORRIGIDO

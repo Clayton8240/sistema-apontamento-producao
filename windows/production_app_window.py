@@ -9,7 +9,7 @@ from ttkbootstrap.constants import *
 from tkinter import messagebox, Canvas, Toplevel, END, W, E, S, N, CENTER, BOTH, YES, X, DISABLED, NORMAL
 from tkinter.ttk import Treeview
 
-# --- 1. Importações Corrigidas ---
+# --- Importações Corrigidas ---
 from languages import LANGUAGES
 from schemas import LOOKUP_TABLE_SCHEMAS
 from database import get_db_connection, release_db_connection
@@ -23,10 +23,8 @@ class App(Toplevel):
         self.db_config = db_config
         self.current_language = self.db_config.get('language', 'portugues')
         
-        # --- 2. Correção de Janela Modal ---
         self.transient(master)
         self.focus_set()
-        # A linha self.grab_set() foi removida.
 
         self.set_localized_title()
         self.geometry("1200x850")
@@ -52,6 +50,11 @@ class App(Toplevel):
     def get_string(self, key, **kwargs):
         lang_dict = LANGUAGES.get(self.current_language, LANGUAGES.get('portugues', {}))
         return lang_dict.get(key, f"_{key}_").format(**kwargs)
+
+    # >>> CORREÇÃO ADICIONADA AQUI <<<
+    def get_db_connection(self):
+        """Obtém uma conexão do pool através do controlador principal."""
+        return get_db_connection()
 
     def set_localized_title(self):
         self.title(self.get_string('btn_production_entry'))
@@ -436,7 +439,6 @@ class App(Toplevel):
 
     def check_and_restore_state(self):
         if not os.path.exists(self.STATE_FILE) or os.path.getsize(self.STATE_FILE) == 0:
-            # CORREÇÃO AQUI:
             self.load_initial_data()
             return
         try:
@@ -445,7 +447,6 @@ class App(Toplevel):
             
             if not state_data or state_data.get('current_state') == 'IDLE':
                 if os.path.exists(self.STATE_FILE): os.remove(self.STATE_FILE)
-                # CORREÇÃO AQUI:
                 self.load_initial_data()
                 return
 
@@ -453,12 +454,10 @@ class App(Toplevel):
                 self.load_state(state_data)
             else:
                 if os.path.exists(self.STATE_FILE): os.remove(self.STATE_FILE)
-                # CORREÇÃO AQUI:
                 self.load_initial_data()
         except (json.JSONDecodeError, Exception) as e:
             print(f"Erro ao restaurar estado: {e}")
             if os.path.exists(self.STATE_FILE): os.remove(self.STATE_FILE)
-            # CORREÇÃO AQUI:
             self.load_initial_data()
         finally:
             self.update_ui_state()
@@ -532,7 +531,7 @@ class App(Toplevel):
         except psycopg2.Error as e:
             messagebox.showerror("Erro", f"Falha ao restaurar WO: {e}", parent=self)
         finally:
-            if conn: conn.close()
+            if conn: release_db_connection(conn)
 
     def periodic_save(self):
         self.save_state()
@@ -588,7 +587,7 @@ class App(Toplevel):
                     conn.rollback()
                     return
                 finally:
-                    conn.close()
+                    release_db_connection(conn)
 
             self.current_state = 'SETUP_RUNNING'
             self.setup_start_time = datetime.now()
@@ -659,7 +658,7 @@ class App(Toplevel):
             messagebox.showerror("Erro", self.get_string('setup_save_failed', error=e))
             return False
         finally:
-            if conn: conn.close()
+            if conn: release_db_connection(conn)
 
     def update_setup_timer(self):
         if self.setup_start_time:
@@ -828,7 +827,7 @@ class App(Toplevel):
             if conn: conn.rollback()
             messagebox.showerror("Erro ao Finalizar Apontamento", f"Ocorreu um erro inesperado e nenhuma informação foi salva:\n{e}", parent=self)
         finally:
-            if conn: conn.close()
+            if conn: release_db_connection(conn)
 
     def open_stop_window(self, stop_type):
         callback = self.add_setup_stop if stop_type == 'setup' else self.add_prod_stop
@@ -905,7 +904,7 @@ class App(Toplevel):
         except Exception as e:
             messagebox.showerror("Erro", f"Falha ao carregar serviços: {e}", parent=self)
         finally:
-            if conn: conn.close()
+            if conn: release_db_connection(conn)
 
     def on_service_select(self, event=None):
         """
@@ -974,7 +973,9 @@ class RealTimeStopWindow(Toplevel):
         self.finish_button = tb.Button(timer_button_frame, text=self.get_string('finish_stop_btn'), bootstyle="danger", state=DISABLED, command=self.finish_stop)
         self.finish_button.pack(pady=(10,0), ipadx=10, ipady=5)
 
+    # >>> CORREÇÃO ADICIONADA AQUI <<<
     def get_db_connection(self):
+        """Obtém uma conexão do pool através da janela App."""
         return self.master.get_db_connection()
 
     def load_motivos_parada(self):
@@ -990,7 +991,7 @@ class RealTimeStopWindow(Toplevel):
         except psycopg2.Error as e:
             messagebox.showwarning("Erro", f"Falha ao carregar motivos de parada: {e}", parent=self)
         finally:
-            if conn: conn.close()
+            if conn: release_db_connection(conn)
 
     def on_reason_selected(self, event=None):
         selected_reason = self.motivo_combobox.get()
