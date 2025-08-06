@@ -9,6 +9,7 @@ from ttkbootstrap import DateEntry
 from tkinter import filedialog, messagebox, Toplevel, END, BOTH, YES, X, Y, LEFT, RIGHT, VERTICAL, HORIZONTAL, BOTTOM, CENTER, W, E
 
 from config import LANGUAGES
+from database import get_db_connection, release_db_connection
 
 class ViewAppointmentsWindow(Toplevel):
     def __init__(self, master, db_config):
@@ -20,6 +21,8 @@ class ViewAppointmentsWindow(Toplevel):
         self.grab_set()
 
         self.kpi_labels = {}
+        self.current_page = 1
+        self.results_per_page = 100
 
         self.create_widgets()
         self.load_filter_options()
@@ -29,7 +32,7 @@ class ViewAppointmentsWindow(Toplevel):
         return self.master.get_string(key, **kwargs)
 
     def get_db_connection(self):
-        return self.master.get_db_connection()
+        return get_db_connection()
 
     def create_widgets(self):
         main_frame = tb.Frame(self, padding=10)
@@ -76,17 +79,15 @@ class ViewAppointmentsWindow(Toplevel):
         tb.Button(buttons_filter_frame, text="Aplicar Filtros", command=self.apply_all_filters, bootstyle=SUCCESS).pack(side=LEFT, padx=10)
         tb.Button(buttons_filter_frame, text="Limpar Filtros", command=self.clear_filters, bootstyle=WARNING).pack(side=LEFT)
 
-        notebook = tb.Notebook(main_frame, bootstyle="primary")
-        notebook.pack(fill=BOTH, expand=True, pady=10)
-
-        tab_historico = tb.Frame(notebook, padding=10)
-        tab_pendentes = tb.Frame(notebook, padding=10)
-        
-        notebook.add(tab_historico, text=" Histórico de Produção ")
-        notebook.add(tab_pendentes, text=" Ordens Pendentes ")
+        tab_historico = tb.Frame(main_frame, padding=10)
+        tab_historico.pack(fill=BOTH, expand=True, pady = 10)
 
         action_frame_hist = tb.LabelFrame(tab_historico, text="Ações do Histórico", bootstyle=INFO, padding=10)
         action_frame_hist.pack(fill=X, pady=(0,10))
+
+        tb.Button(action_frame_hist, text="Abrir Gestão PCP (Ordens Pendentes)", command=self.open_pcp_window, bootstyle="primary-outline").pack(side=LEFT, padx=5)
+
+
         tb.Button(action_frame_hist, text="Ver Detalhes das Paradas", command=self.view_stops, bootstyle="secondary-outline").pack(side=LEFT, padx=5)
         tb.Button(action_frame_hist, text="Exportar Histórico para Excel", command=self.export_to_xlsx, bootstyle="success-outline").pack(side=RIGHT, padx=5)
 
@@ -110,23 +111,17 @@ class ViewAppointmentsWindow(Toplevel):
         self.tree_hist.pack(side=LEFT, fill=BOTH, expand=True)
         tb.Scrollbar(tree_frame_hist, orient=VERTICAL, command=self.tree_hist.yview).pack(side=RIGHT, fill=Y)
 
-        tree_frame_pend = tb.Frame(tab_pendentes)
-        tree_frame_pend.pack(fill=BOTH, expand=True)
-
-        self.cols_pend = ("seq", "wo", "cliente", "servico_desc", "servico_status", "data_previsao")
-        self.headers_pend = ("Seq.", "WO", "Cliente", "Serviço", "Status Serviço", "Data Previsão")
-
-        self.tree_pend = tb.Treeview(tree_frame_pend, columns=self.cols_pend, show="headings", bootstyle=INFO)
-        for col, header in zip(self.cols_pend, self.headers_pend):
-            self.tree_pend.heading(col, text=header)
-            self.tree_pend.column(col, anchor=W, width=150)
-        self.tree_pend.column("seq", width=50, stretch=False)
-        self.tree_pend.pack(side=LEFT, fill=BOTH, expand=True)
-        tb.Scrollbar(tree_frame_pend, orient=VERTICAL, command=self.tree_pend.yview).pack(side=RIGHT, fill=Y)
+        pagination_frame = tb.Frame(tab_historico)
+        pagination_frame.pack(fill=X, pady=(5,0))
+        self.prev_page_button = tb.Button(pagination_frame, text="< Página Anterior", command=self.prev_page, bootstyle="secondary")
+        self.prev_page_button.pack(side=LEFT)
+        self.page_label = tb.Label(pagination_frame, text=f"Página {self.current_page}")
+        self.page_label.pack(side=LEFT, padx=10)
+        self.next_page_button = tb.Button(pagination_frame, text="Próxima Página >", command=self.next_page, bootstyle="secondary")
+        self.next_page_button.pack(side=LEFT)
 
     def apply_all_filters(self):
         self.load_production_history()
-        self.load_pending_orders()
 
     def load_filter_options(self):
         conn = self.get_db_connection()
@@ -150,35 +145,49 @@ class ViewAppointmentsWindow(Toplevel):
     def load_production_history(self):
         for item in self.tree_hist.get_children():
             self.tree_hist.delete(item)
+        self.page_label.config(text=f"Página {self.current_page}")
 
         conn = self.get_db_connection()
         if not conn: return
         
+        
         try:
             with conn.cursor() as cur:
                 query = """
-                    SELECT 
-                        ap.id, op.numero_wo, op.cliente, os.descricao, os.status, ap.data, 
-                        ap.horainicio, ap.horafim, imp.nome, et.descricao, 
+                    SELECT
+                        ap.id, op.numero_wo, op.cliente, os.descricao, os.status, ap.data,
+                        ap.horainicio, ap.horafim, imp.nome, et.descricao,
                         ap.quantidadeproduzida, ap.perdas_producao
                     FROM apontamento AS ap
                     LEFT JOIN ordem_servicos AS os ON ap.servico_id = os.id
                     LEFT JOIN ordem_producao AS op ON os.ordem_id = op.id
                     LEFT JOIN impressores AS imp ON ap.impressor_id = imp.id
-                    LEFT JOIN equipamentos_tipos AS et ON op.equipamento_id = et.id
+                    LEFT JOIN ordem_producao_maquinas AS opm ON os.maquina_id = opm.id
+                    LEFT JOIN equipamentos_tipos AS et ON opm.equipamento_id = et.id
                     WHERE {where_clauses}
                     ORDER BY ap.data DESC, ap.horainicio DESC
+                    LIMIT %s OFFSET %s
                 """
-                
+
                 filters, params = self.get_filters()
                 where_str = " AND ".join(filters) if filters else "1=1"
                 final_query = query.format(where_clauses=where_str)
-                
+
+                # Calcula o OFFSET e adiciona os novos parâmetros
+                offset = (self.current_page - 1) * self.results_per_page
+                params.extend([self.results_per_page, offset])
+
                 cur.execute(final_query, tuple(params))
-                for row in cur.fetchall():
+                rows = cur.fetchall()
+
+                # Habilita/desabilita os botões de paginação
+                self.prev_page_button.config(state=NORMAL if self.current_page > 1 else DISABLED)
+                self.next_page_button.config(state=NORMAL if len(rows) == self.results_per_page else DISABLED)
+
+                for row in rows:
                     processed_row = [item if item is not None else "" for item in row]
                     self.tree_hist.insert("", END, values=tuple(processed_row))
-            
+               
             self.calculate_and_display_kpis()
 
         except (psycopg2.Error, ValueError) as e:
@@ -353,6 +362,23 @@ class ViewAppointmentsWindow(Toplevel):
         except Exception as e:
             messagebox.showerror("Erro ao Exportar", f"Ocorreu um erro ao exportar o relatório: {e}", parent=self)
 
+    def open_pcp_window(self):
+        # Esta função assume que a janela principal (master) tem um método para abrir a janela do PCP
+        # Se a estrutura for diferente, você precisará ajustar.
+        # Baseado em main_menu_window.py, a janela mestre deve ter este método.
+        if hasattr(self.master, 'open_pcp_window'):
+            self.master.open_pcp_window()
+        else:
+            messagebox.showinfo("Informação", "Função para abrir o PCP não encontrada no contexto atual.")
+
+    def next_page(self):
+        self.current_page += 1
+        self.load_production_history()
+
+    def prev_page(self):
+        if self.current_page > 1:
+            self.current_page -= 1
+            self.load_production_history()
 
 class StopsDetailsWindow(Toplevel):
     def __init__(self, master, db_config, apontamento_id, wo_number):

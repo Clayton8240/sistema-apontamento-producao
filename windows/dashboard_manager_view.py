@@ -231,65 +231,43 @@ class DashboardManagerView(Toplevel):
         except Exception as e:
             messagebox.showerror("Erro ao Carregar Relatório", f"Ocorreu um erro inesperado: {e}", parent=self)
             self.reset_dashboard()
-    
+
     def build_sql_query(self):
-        """Constrói a consulta SQL com base nos filtros da interface."""
-        query = """
-        SELECT 
-            op.data_cadastro_pcp::date AS data_ordem,
-            op.numero_wo,
-            op.cliente,
-            os.descricao AS servico,
-            et.descricao AS maquina,
-            i.nome AS operador,
-            opm.tiragem_em_folhas AS meta_qtd,
-            ap.quantidadeproduzida AS prod_qtd,
-            s.perdas AS perdas_setup,
-            ap.perdas_producao AS perdas_prod,
-            EXTRACT(EPOCH FROM (s.hora_fim - s.hora_inicio)) AS tempo_setup_s,
-            EXTRACT(EPOCH FROM (ap.horafim - ap.horainicio)) AS tempo_prod_s,
-            (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.hora_fim_parada - p.hora_inicio_parada))), 0) 
-             FROM paradas p WHERE p.apontamento_id = ap.id) +
-            (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (ps.hora_fim_parada - ps.hora_inicio_parada))), 0) 
-             FROM paradas_setup ps WHERE ps.setup_id = s.id) AS tempo_parada_s
-        FROM ordem_servicos os
-        JOIN ordem_producao op ON os.ordem_id = op.id
-        JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
-        LEFT JOIN equipamentos_tipos et ON opm.equipamento_id = et.id
-        LEFT JOIN apontamento ap ON os.id = ap.servico_id
-        LEFT JOIN apontamento_setup s ON os.id = s.servico_id
-        LEFT JOIN impressores i ON ap.impressor_id = i.id
-        """
-        
+        """Constrói a consulta SQL com base nos filtros da interface, agora usando a VIEW."""
+        # A consulta agora é muito mais simples e rápida!
+        query = "SELECT * FROM mv_relatorio_producao_consolidado"
+
         filters = []
         params = []
-        
+
         start_date = self.start_date_entry.entry.get()
         if start_date:
             try:
-                filters.append("op.data_cadastro_pcp::date >= %s")
+                # O nome da coluna na view é 'data_ordem'
+                filters.append("data_ordem >= %s")
                 params.append(datetime.strptime(start_date, '%d/%m/%Y').date())
-            except ValueError: pass 
+            except ValueError: pass
 
         end_date = self.end_date_entry.entry.get()
         if end_date:
             try:
-                filters.append("op.data_cadastro_pcp::date <= %s")
+                # O nome da coluna na view é 'data_ordem'
+                filters.append("data_ordem <= %s")
                 params.append(datetime.strptime(end_date, '%d/%m/%Y').date())
             except ValueError: pass
 
         if self.client_combobox.get():
-            filters.append("op.cliente = %s")
+            filters.append("cliente = %s")
             params.append(self.client_combobox.get())
-            
+
         if self.machine_combobox.get():
-            filters.append("et.descricao = %s")
+            filters.append("maquina = %s")
             params.append(self.machine_combobox.get())
 
         if filters:
             query += " WHERE " + " AND ".join(filters)
-        
-        query += " ORDER BY op.data_cadastro_pcp DESC, op.numero_wo"
+
+        query += " ORDER BY data_ordem DESC, numero_wo"
         return query, params
 
     def reset_dashboard(self):
@@ -305,30 +283,36 @@ class DashboardManagerView(Toplevel):
                 widget.destroy()
 
     def update_kpis(self, df):
-        """Calcula e atualiza os valores nos cartões de KPI."""
+        """Calcula e atualiza os valores nos cartões de KPI com a fórmula correta do OEE."""
+        # 1. Componentes básicos
         total_produzido = df['prod_qtd'].sum()
         total_perdas_setup = df['perdas_setup'].sum()
         total_perdas_prod = df['perdas_prod'].sum()
         total_perdas = total_perdas_setup + total_perdas_prod
         total_paradas_s = df['tempo_parada_s'].sum()
-        
-        tempo_planejado_s = df['tempo_prod_s'].sum() + df['tempo_setup_s'].sum()
-        if tempo_planejado_s > 0:
-            disponibilidade = (tempo_planejado_s - total_paradas_s) / tempo_planejado_s if tempo_planejado_s > total_paradas_s else 0
-        else:
-            disponibilidade = 0
-        
-        meta_total = df['meta_qtd'].sum()
-        if meta_total > 0:
-             performance = total_produzido / meta_total
-        else:
-            performance = 0
+        tempo_producao_real_s = df['tempo_prod_s'].sum()
 
+        # 2. Cálculo de Disponibilidade
+        # Tempo Planejado = Tempo que a máquina esteve produzindo + Tempo em que esteve parada
+        tempo_producao_planejado_s = tempo_producao_real_s + total_paradas_s
+        disponibilidade = (tempo_producao_real_s / tempo_producao_planejado_s) if tempo_producao_planejado_s > 0 else 0
+
+        # 3. Cálculo de Performance
+        # Performance = (Produção Real * Tempo de Ciclo Ideal) / Tempo de Produção Real
+        # A VIEW já nos dá o tempo de ciclo ideal por item.
+        # Precisamos multiplicar a produção de cada linha pelo seu tempo de ciclo ideal.
+        tempo_ideal_total_s = (df['prod_qtd'] * df['tempo_ciclo_ideal_s']).sum()
+        performance = (tempo_ideal_total_s / tempo_producao_real_s) if tempo_producao_real_s > 0 else 0
+
+        # 4. Cálculo de Qualidade
+        # Qualidade = (Peças Boas) / (Total de Peças Produzidas)
         total_fabricado = total_produzido + total_perdas_prod
         qualidade = total_produzido / total_fabricado if total_fabricado > 0 else 0
-        
+
+        # 5. Cálculo do OEE
         oee = disponibilidade * performance * qualidade
 
+        # Atualização dos labels na interface
         self.kpi_oee_label.config(text=f"{oee:.2%}")
         self.kpi_total_produzido_label.config(text=f"{int(total_produzido):,}".replace(',', '.'))
         self.kpi_total_perdas_label.config(text=f"{int(total_perdas):,}".replace(',', '.'))

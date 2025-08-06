@@ -619,3 +619,7 @@ class PCPWindow(tb.Toplevel):
             # utilizando os caminhos temporários)
 
             messagebox.showinfo("Sucesso", "Relatório PDF gerado com sucesso!")
+
+    def get_db_connection(self):
+        """Retorna uma conexão do pool de banco de dados."""
+        return get_db_connection()

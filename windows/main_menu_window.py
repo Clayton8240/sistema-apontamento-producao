@@ -12,6 +12,7 @@ from .pcp_window import PCPWindow
 from .view_appointments_window import ViewAppointmentsWindow
 from .dashboard_manager_view import DashboardManagerView
 from .user_manager_window import UserManagerWindow # <-- NOVA IMPORTAÇÃO
+from database import get_db_connection, release_db_connection
 
 class MenuPrincipalWindow(tb.Toplevel):
     def __init__(self, master, db_config):
@@ -39,7 +40,7 @@ class MenuPrincipalWindow(tb.Toplevel):
         self.title(self.get_string('main_menu_title'))
 
     def get_db_connection(self):
-        return self.master.get_db_connection()
+        return get_db_connection()
 
     def create_widgets(self):
         main_frame = tb.Frame(self, padding=(20, 20))
@@ -60,7 +61,7 @@ class MenuPrincipalWindow(tb.Toplevel):
         config_menu.add_command(label=self.get_string('menu_db_config'), command=lambda: self.master.open_configure_db_window(self))
         config_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self, self.db_config, self.refresh_main_pcp_comboboxes))
         
-        # --- NOVA OPÇÃO DE MENU ---
+       
         config_menu.add_command(label="Gerenciar Usuários", command=self.open_user_manager)
 
         self.menubar.add_cascade(label=self.get_string('menu_settings'), menu=config_menu)
@@ -99,7 +100,6 @@ class MenuPrincipalWindow(tb.Toplevel):
         else:
             self.open_windows['dashboard'].lift()
 
-    # --- NOVA FUNÇÃO PARA ABRIR O GERENCIADOR DE USUÁRIOS ---
     def open_user_manager(self):
         if 'user_manager' not in self.open_windows or not self.open_windows['user_manager'].winfo_exists():
             self.open_windows['user_manager'] = UserManagerWindow(master=self, db_config=self.db_config)
