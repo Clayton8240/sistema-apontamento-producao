@@ -4,7 +4,6 @@ from datetime import datetime, time, date
 import psycopg2
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
-# MOD: Adiciona PanedWindow para um layout redimensionável pelo usuário
 from tkinter import messagebox, Canvas, Toplevel, END, W, E, S, N, CENTER, BOTH, YES, X, DISABLED, NORMAL, VERTICAL
 from tkinter.ttk import Treeview
 
@@ -12,6 +11,69 @@ from tkinter.ttk import Treeview
 from languages import LANGUAGES
 from schemas import LOOKUP_TABLE_SCHEMAS
 from database import get_db_connection, release_db_connection
+
+# Classe da janela de detalhes das paradas
+# Esta classe foi adicionada aqui para garantir que esteja disponível para a janela principal
+class StopDetailsWindow(Toplevel):
+    """
+    Janela para visualizar os detalhes das paradas de um apontamento que ainda não foi salvo.
+    """
+    def __init__(self, master, stops_data, wo_number):
+        super().__init__(master)
+        self.master = master
+        self.stops_data = stops_data
+        self.wo_number = wo_number
+
+        self.title(f"Detalhes de Parada - WO: {self.wo_number}")
+        self.geometry("600x400")
+        self.transient(master)
+        self.grab_set()
+
+        self.create_widgets()
+        self.load_stops_data()
+
+    def create_widgets(self):
+        main_frame = tb.Frame(self, padding=10)
+        main_frame.pack(fill=BOTH, expand=YES)
+
+        cols = ("tipo", "motivo", "inicio", "fim", "duracao")
+        headers = ("Tipo", "Motivo da Parada", "Hora Início", "Hora Fim", "Duração")
+        self.tree = Treeview(main_frame, columns=cols, show="headings")
+        for col, header in zip(cols, headers):
+            self.tree.heading(col, text=header)
+            self.tree.column(col, anchor=CENTER)
+        self.tree.column("motivo", anchor=W, width=200)
+        
+        # Implementação da barra de rolagem lateral
+        scrollbar = tb.Scrollbar(main_frame, orient=VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+
+        self.tree.pack(side=LEFT, fill=BOTH, expand=YES)
+        scrollbar.pack(side=RIGHT, fill=Y)
+
+    def load_stops_data(self):
+        if not self.stops_data:
+            tb.Label(self, text="Nenhuma parada registrada.").pack(pady=20)
+            return
+
+        for stop in self.stops_data:
+            start = stop.get('hora_inicio_parada')
+            end = stop.get('hora_fim_parada')
+            
+            start_str = start.strftime('%H:%M:%S') if start else ''
+            end_str = end.strftime('%H:%M:%S') if end else ''
+
+            duration_str = ""
+            if start and end:
+                delta = datetime.combine(date.min, end) - datetime.combine(date.min, start)
+                duration_str = str(delta)
+
+            motivo_display = stop.get('motivo_text', '')
+            if motivo_display and motivo_display.lower() == 'outros' and stop.get('motivo_extra_detail'):
+                motivo_display = f"Outros: {stop['motivo_extra_detail']}"
+            
+            values = (stop.get('type', ''), motivo_display, start_str, end_str, duration_str)
+            self.tree.insert("", END, values=values)
 
 class App(Toplevel):
     def __init__(self, master, db_config):
@@ -24,11 +86,8 @@ class App(Toplevel):
         self.focus_set()
 
         self.set_localized_title()
-        # MOD: Remove a geometria fixa e inicia a janela maximizada para se adaptar a qualquer tela.
         self.state('zoomed')
-        # MOD: Define um tamanho mínimo para garantir a usabilidade em resoluções menores.
         self.wm_minsize(1024, 768)
-
 
         self.current_state = 'IDLE'
         self.setup_start_time, self.setup_end_time = None, None
@@ -58,17 +117,14 @@ class App(Toplevel):
         self.title(self.get_string('btn_production_entry'))
 
     def create_widgets(self):
-        # MOD: A estrutura principal agora é um PanedWindow para permitir o redimensionamento das seções.
         main_paned_window = tb.PanedWindow(self, orient=VERTICAL)
         main_paned_window.pack(fill=BOTH, expand=YES, padx=10, pady=10)
 
-        # --- PAINEL SUPERIOR (Seleção e Informações) ---
         top_pane = tb.Frame(main_paned_window)
         main_paned_window.add(top_pane)
         top_pane.grid_columnconfigure(0, weight=1)
-        top_pane.grid_columnconfigure(1, weight=1) # MOD: Ambas as colunas expandem igualmente
+        top_pane.grid_columnconfigure(1, weight=1)
 
-        # Frame de Seleção
         selection_frame = tb.LabelFrame(top_pane, text=self.get_string('initial_selection_section'), bootstyle=PRIMARY, padding=15)
         selection_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5), pady=5)
         selection_frame.grid_columnconfigure(1, weight=1)
@@ -93,7 +149,6 @@ class App(Toplevel):
         self.turno_combobox.grid(row=3, column=1, sticky="ew", padx=5, pady=5)
         self.initial_fields['turno'] = self.turno_combobox
 
-        # Frame de Informações da Ordem
         self.wo_info_frame = tb.LabelFrame(top_pane, text=self.get_string('order_info_section'), bootstyle=PRIMARY, padding=15)
         self.wo_info_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0), pady=5)
         info_keys = {'col_wo': 'Nº WO', 'col_cliente': 'Cliente', 'equipment_label': 'Equipamento do Serviço', 'col_tipo_papel': 'Tipo Papel', 'col_tiragem_em_folhas': 'Tiragem Meta', 'col_qtde_cores': 'QTDE Cores', 'giros_previstos': 'Giros Previstos', 'tempo_previsto': 'Tempo Previsto'}
@@ -104,18 +159,16 @@ class App(Toplevel):
             label_widget.grid(row=i, column=1, sticky=W, padx=5, pady=2)
             self.info_labels[key] = label_widget
 
-        # --- PAINEL INFERIOR (Apontamento e Histórico) ---
         bottom_pane = tb.Frame(main_paned_window)
         main_paned_window.add(bottom_pane)
         bottom_pane.grid_columnconfigure(0, weight=1)
-        bottom_pane.grid_rowconfigure(1, weight=1) # MOD: O histórico expande verticalmente
+        bottom_pane.grid_rowconfigure(1, weight=1)
 
         process_frame = tb.Frame(bottom_pane)
         process_frame.grid(row=0, column=0, sticky='nsew', pady=5)
         process_frame.grid_columnconfigure(0, weight=1)
         process_frame.grid_columnconfigure(1, weight=1)
 
-        # Frame de Setup
         self.setup_frame = tb.LabelFrame(process_frame, text=self.get_string('setup_section'), bootstyle=INFO, padding=15)
         self.setup_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         self.setup_frame.grid_columnconfigure(0, weight=1)
@@ -136,7 +189,6 @@ class App(Toplevel):
         self.setup_stop_button = tb.Button(setup_control_frame, text=self.get_string('point_setup_stop_btn'), command=lambda: self.open_stop_window('setup'), state=DISABLED, width=20)
         self.setup_stop_button.pack(pady=5, ipady=5)
 
-        # Frame de Produção
         self.prod_frame = tb.LabelFrame(process_frame, text=self.get_string('production_section'), bootstyle=SUCCESS, padding=15)
         self.prod_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
         self.prod_frame.grid_columnconfigure(0, weight=1)
@@ -169,7 +221,12 @@ class App(Toplevel):
         stops_frame.grid_columnconfigure(0, weight=1)
         stops_frame.grid_rowconfigure(0, weight=1)
         
-        self.stops_tree = Treeview(stops_frame, columns=('tipo', 'motivo', 'inicio', 'fim', 'duracao'), show='headings', height=5)
+        tree_container = tb.Frame(stops_frame)
+        tree_container.pack(fill=BOTH, expand=YES, pady=(0, 5))
+        tree_container.grid_columnconfigure(0, weight=1)
+        tree_container.grid_rowconfigure(0, weight=1)
+        
+        self.stops_tree = Treeview(tree_container, columns=('tipo', 'motivo', 'inicio', 'fim', 'duracao'), show='headings', height=5)
         self.stops_tree.heading('tipo', text="Tipo"); self.stops_tree.column('tipo', width=80, anchor=CENTER)
         self.stops_tree.heading('motivo', text="Motivo"); self.stops_tree.column('motivo', width=250)
         self.stops_tree.heading('inicio', text="Início"); self.stops_tree.column('inicio', width=100, anchor=CENTER)
@@ -177,11 +234,14 @@ class App(Toplevel):
         self.stops_tree.heading('duracao', text="Duração"); self.stops_tree.column('duracao', width=100, anchor=CENTER)
         self.stops_tree.grid(row=0, column=0, sticky='nsew')
         
-        stops_scrollbar = tb.Scrollbar(stops_frame, orient=VERTICAL, command=self.stops_tree.yview)
+        stops_scrollbar = tb.Scrollbar(tree_container, orient=VERTICAL, command=self.stops_tree.yview)
         stops_scrollbar.grid(row=0, column=1, sticky='ns')
         self.stops_tree.configure(yscrollcommand=stops_scrollbar.set)
         
-        # Botão final e Barra de Status
+        # Botão para ver detalhes
+        details_button = tb.Button(stops_frame, text="Ver Detalhes das Paradas", command=self.view_stop_details)
+        details_button.pack(pady=5)
+        
         self.final_register_button = tb.Button(bottom_pane, text=self.get_string("register_entry_btn"), command=self.submit_final_production, state=DISABLED)
         self.final_register_button.grid(row=2, column=0, pady=20, ipady=10)
         
@@ -475,10 +535,6 @@ class App(Toplevel):
         self.status_label.config(text=self.get_string(status_key), bootstyle=bootstyle)
 
     def check_and_restore_state_from_db(self):
-        """
-        Verifica no banco de dados se existe algum apontamento de setup ou produção
-        que não foi finalizado e oferece a restauração.
-        """
         conn = None
         try:
             conn = self.get_db_connection()
@@ -514,7 +570,6 @@ class App(Toplevel):
                 self.update_ui_state()
 
     def load_data_for_restored_service(self):
-        """ Carrega informações para preencher a UI ao restaurar. """
         print(f"Restaurando dados para o serviço ID: {self.selected_servico_id}")
         self.on_equipment_select()
         self.update_wo_info_panel()
