@@ -5,6 +5,7 @@ from ttkbootstrap.constants import *
 from tkinter import messagebox, Toplevel
 
 from config import LANGUAGES
+from database import get_db_connection, release_db_connection
 
 class WODetailWindow(Toplevel):
     def __init__(self, master, db_config, ordem_id):
@@ -103,59 +104,4 @@ class WODetailWindow(Toplevel):
             except Exception as e:
                 messagebox.showerror("Erro", f"Não foi possível carregar os detalhes da WO: {e}", parent=self)
             finally:
-                # CORREÇÃO AQUI
-                if conn: conn.close()
-            conn = self.get_db_connection()
-            if not conn: return
-            try:
-                with conn.cursor() as cur:
-                    # Query que junta todas as informações de cada etapa da WO
-                    query = """
-                        SELECT 
-                            os.sequencia,
-                            os.descricao,
-                            os.status,
-                            tp.descricao as papel,
-                            qc.descricao as cores,
-                            opm.tiragem_em_folhas,
-                            imp.nome as impressor_nome,
-                            ap.horainicio,
-                            ap.horafim,
-                            op.numero_wo
-                        FROM ordem_servicos os
-                        JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
-                        JOIN ordem_producao op ON os.ordem_id = op.id
-                        LEFT JOIN tipos_papel tp ON opm.tipo_papel_id = tp.id
-                        LEFT JOIN qtde_cores_tipos qc ON opm.qtde_cores_id = qc.id
-                        LEFT JOIN apontamento ap ON ap.servico_id = os.id
-                        LEFT JOIN impressores imp ON ap.impressor_id = imp.id
-                        WHERE os.ordem_id = %s
-                        ORDER BY os.sequencia;
-                    """
-                    cur.execute(query, (self.ordem_id,))
-
-                    wo_number_set = False
-                    for row in cur.fetchall():
-                        # Formata os dados para exibição
-                        seq, serv, status, papel, cores, tiragem, op, inicio, fim, wo_num = row
-                        if not wo_number_set and wo_num:
-                            self.title_label.config(text=f"Acompanhamento da WO: {wo_num}")
-                            wo_number_set = True
-
-                        values = (
-                            seq or '',
-                            serv or '',
-                            status or '',
-                            papel or '-',
-                            cores or '-',
-                            tiragem or '',
-                            op or '-',
-                            inicio.strftime('%H:%M') if inicio else '-',
-                            fim.strftime('%H:%M') if fim else '-'
-                        )
-                        self.tree.insert('', 'end', values=values)
-
-            except Exception as e:
-                messagebox.showerror("Erro", f"Não foi possível carregar os detalhes da WO: {e}", parent=self)
-            finally:
-                if conn: conn.close()
+                if conn: release_db_connection(conn)

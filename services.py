@@ -1,0 +1,335 @@
+# -*- coding: utf-8 -*-
+"""
+Módulo de Serviços
+
+Esta camada de serviço abstrai a lógica de negócio e as interações complexas
+com o banco de dados, desacoplando a UI da lógica de dados.
+Todas as funções aqui devem garantir a atomicidade das operações através de transações.
+"""
+
+from datetime import datetime
+import psycopg2
+from database import get_db_connection, release_db_connection
+
+class ServiceError(Exception):
+    """Exceção base para erros na camada de serviço."""
+    pass
+
+def create_production_order(order_data, machine_list, acabamento_ids):
+    """
+    Cria uma nova Ordem de Produção e todos os seus componentes (máquinas, serviços, acabamentos)
+    de forma transacional.
+
+    Args:
+        order_data (dict): Dicionário com os dados da OP (numero_wo, cliente, data_previsao_entrega, tipo_papel_id, gramatura_id, formato_id, fsc_id).
+        machine_list (list): Lista de dicionários, onde cada dicionário representa os dados de uma máquina.
+                             Ex: [{"equipamento_id": 1, "tiragem": 1000, "tempo_previsto_ms": 1000, "dynamic_fields": {"giros_previstos": 500, "qtde_cores_id": 1}}]
+        acabamento_ids (list): Lista de IDs dos acabamentos selecionados.
+
+    Raises:
+        ServiceError: Se ocorrer um erro durante a operação no banco de dados.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            # 1. Inserir a Ordem de Produção principal
+            query_op = """
+                INSERT INTO ordem_producao (numero_wo, pn_partnumber, cliente, data_previsao_entrega, status, tipo_papel_id, gramatura_id, formato_id, fsc_id)
+                VALUES (%(numero_wo)s, %(pn_partnumber)s, %(cliente)s, %(data_previsao_entrega)s, 'Em Aberto', %(tipo_papel_id)s, %(gramatura_id)s, %(formato_id)s, %(fsc_id)s) RETURNING id;
+            """
+            cur.execute(query_op, order_data)
+            ordem_id = cur.fetchone()[0]
+
+            # 2. Inserir os acabamentos associados
+            if acabamento_ids:
+                args_str = ','.join(cur.mogrify("(%s, %s)", (ordem_id, acab_id)).decode('utf-8') for acab_id in acabamento_ids)
+                cur.execute("INSERT INTO ordem_producao_acabamentos (ordem_id, acabamento_id) VALUES " + args_str)
+
+            # 3. Inserir as máquinas e os serviços correspondentes
+            sequencia_servico = 1
+            for machine_data in machine_list:
+                # Inserir máquina
+                query_maquina = """
+                    INSERT INTO ordem_producao_maquinas (
+                        ordem_id, equipamento_id, tiragem_em_folhas, 
+                        tempo_producao_previsto_ms, sequencia_producao
+                    ) VALUES (%s, %s, %s, %s, %s) RETURNING id;
+                """
+                cur.execute(query_maquina, (
+                    ordem_id, machine_data['equipamento_id'], int(machine_data['tiragem']), 
+                    int(machine_data['tempo_previsto_ms']), sequencia_servico
+                ))
+                maquina_id = cur.fetchone()[0]
+
+                # Inserir valores dos campos dinâmicos
+                for field_name, field_value in machine_data.get('dynamic_fields', {}).items():
+                    # Get field_id from field_name
+                    field_id = get_field_id_by_name(field_name) # This function will be added next
+                    if field_id:
+                        query_dynamic_value = """
+                            INSERT INTO ordem_producao_maquinas_valores (ordem_producao_maquinas_id, equipamento_campo_id, valor)
+                            VALUES (%s, %s, %s);
+                        """
+                        cur.execute(query_dynamic_value, (maquina_id, field_id, str(field_value)))
+
+                # Inserir serviço
+                query_servico = """
+                    INSERT INTO ordem_servicos (ordem_id, maquina_id, descricao, status, sequencia)
+                    VALUES (%s, %s, %s, 'Pendente', %s);
+                """
+                cur.execute(query_servico, (ordem_id, maquina_id, machine_data['equipamento_nome'], sequencia_servico))
+                
+                sequencia_servico += 1
+        
+        conn.commit()
+
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        raise ServiceError(f"Não foi possível salvar a ordem: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def get_equipment_fields(equipamento_id):
+    """
+    Retorna os campos dinâmicos associados a um tipo de equipamento.
+
+    Args:
+        equipamento_id (int): O ID do tipo de equipamento.
+
+    Returns:
+        list: Uma lista de dicionários, onde cada dicionário representa um campo,
+              contendo 'nome_campo', 'label_traducao', 'tipo_dado', 'widget_type', 'lookup_table'.
+    Raises:
+        ServiceError: Se ocorrer um erro durante a operação no banco de dados.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                SELECT
+                    ec.nome_campo,
+                    ec.label_traducao,
+                    ec.tipo_dado,
+                    ec.widget_type,
+                    ec.lookup_table
+                FROM
+                    equipamento_campos ec
+                JOIN
+                    equipamentos_tipos_campos etc ON ec.id = etc.equipamento_campo_id
+                WHERE
+                    etc.equipamento_tipo_id = %s
+                ORDER BY
+                    etc.ordem_exibicao;
+            """
+            cur.execute(query, (equipamento_id,))
+            columns = [col[0] for col in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
+    except (Exception, psycopg2.Error) as e:
+        raise ServiceError(f"Erro ao buscar campos do equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def get_field_id_by_name(field_name):
+    """
+    Retorna o ID de um campo dinâmico dado o seu nome.
+
+    Args:
+        field_name (str): O nome do campo (nome_campo na tabela equipamento_campos).
+
+    Returns:
+        int: O ID do campo, ou None se não encontrado.
+    Raises:
+        ServiceError: Se ocorrer um erro durante a operação no banco de dados.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = "SELECT id FROM equipamento_campos WHERE nome_campo = %s;"
+            cur.execute(query, (field_name,))
+            result = cur.fetchone()
+            return result[0] if result else None
+    except (Exception, psycopg2.Error) as e:
+        raise ServiceError(f"Erro ao buscar ID do campo '{field_name}': {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+# --- Equipment Types Services ---
+def get_all_equipment_types():
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, descricao, tempo_por_folha_ms FROM equipamentos_tipos ORDER BY descricao")
+            columns = [col[0] for col in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
+    except (Exception, psycopg2.Error) as e:
+        raise ServiceError(f"Erro ao buscar todos os tipos de equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def create_equipment_type(description, tempo_por_folha_ms):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO equipamentos_tipos (descricao, tempo_por_folha_ms) VALUES (%s, %s) RETURNING id",
+                        (description, tempo_por_folha_ms))
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            return new_id
+    except (Exception, psycopg2.Error) as e:
+        if conn: conn.rollback()
+        raise ServiceError(f"Erro ao criar tipo de equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def update_equipment_type(id, description, tempo_por_folha_ms):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("UPDATE equipamentos_tipos SET descricao = %s, tempo_por_folha_ms = %s WHERE id = %s",
+                        (description, tempo_por_folha_ms, id))
+            conn.commit()
+    except (Exception, psycopg2.Error) as e:
+        if conn: conn.rollback()
+        raise ServiceError(f"Erro ao atualizar tipo de equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def delete_equipment_type(id):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM equipamentos_tipos WHERE id = %s", (id,))
+            conn.commit()
+    except (Exception, psycopg2.Error) as e:
+        if conn: conn.rollback()
+        raise ServiceError(f"Erro ao deletar tipo de equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+# --- Equipment Fields Services ---
+def get_all_equipment_fields():
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id, nome_campo, label_traducao, tipo_dado, widget_type, lookup_table FROM equipamento_campos ORDER BY nome_campo")
+            columns = [col[0] for col in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
+    except (Exception, psycopg2.Error) as e:
+        raise ServiceError(f"Erro ao buscar todos os campos de equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def create_equipment_field(nome_campo, label_traducao, tipo_dado, widget_type, lookup_table):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO equipamento_campos (nome_campo, label_traducao, tipo_dado, widget_type, lookup_table) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                        (nome_campo, label_traducao, tipo_dado, widget_type, lookup_table))
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            return new_id
+    except (Exception, psycopg2.Error) as e:
+        if conn: conn.rollback()
+        raise ServiceError(f"Erro ao criar campo de equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def update_equipment_field(id, nome_campo, label_traducao, tipo_dado, widget_type, lookup_table):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("UPDATE equipamento_campos SET nome_campo = %s, label_traducao = %s, tipo_dado = %s, widget_type = %s, lookup_table = %s WHERE id = %s",
+                        (nome_campo, label_traducao, tipo_dado, widget_type, lookup_table, id))
+            conn.commit()
+    except (Exception, psycopg2.Error) as e:
+        if conn: conn.rollback()
+        raise ServiceError(f"Erro ao atualizar campo de equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def delete_equipment_field(id):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM equipamento_campos WHERE id = %s", (id,))
+            conn.commit()
+    except (Exception, psycopg2.Error) as e:
+        if conn: conn.rollback()
+        raise ServiceError(f"Erro ao deletar campo de equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+# --- Equipment Type Field Association Services ---
+def get_equipment_type_fields(equipamento_type_id):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                SELECT ec.id, ec.nome_campo, ec.label_traducao, ec.tipo_dado, ec.widget_type, ec.lookup_table
+                FROM equipamento_campos ec
+                JOIN equipamentos_tipos_campos etc ON ec.id = etc.equipamento_campo_id
+                WHERE etc.equipamento_tipo_id = %s
+                ORDER BY etc.ordem_exibicao
+            """
+            cur.execute(query, (equipamento_type_id,))
+            columns = [col[0] for col in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
+    except (Exception, psycopg2.Error) as e:
+        raise ServiceError(f"Erro ao buscar campos atribuídos ao tipo de equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def add_equipment_type_field(equipamento_type_id, field_id, order):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO equipamentos_tipos_campos (equipamento_tipo_id, equipamento_campo_id, ordem_exibicao) VALUES (%s, %s, %s)",
+                        (equipamento_type_id, field_id, order))
+            conn.commit()
+    except (Exception, psycopg2.Error) as e:
+        if conn: conn.rollback()
+        raise ServiceError(f"Erro ao atribuir campo ao tipo de equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def remove_equipment_type_field(equipamento_type_id, field_id):
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM equipamentos_tipos_campos WHERE equipamento_tipo_id = %s AND equipamento_campo_id = %s",
+                        (equipamento_type_id, field_id))
+            conn.commit()
+    except (Exception, psycopg2.Error) as e:
+        if conn: conn.rollback()
+        raise ServiceError(f"Erro ao desatribuir campo do tipo de equipamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)

@@ -408,7 +408,11 @@ CREATE TABLE public.ordem_producao (
     acabamento text,
     status character varying(50) DEFAULT 'Em Aberto'::character varying,
     data_cadastro_pcp timestamp without time zone DEFAULT CURRENT_TIMESTAMP,
-    sequencia_producao integer DEFAULT nextval('public.ordem_producao_sequencia_producao_seq'::regclass)
+    sequencia_producao integer DEFAULT nextval('public.ordem_producao_sequencia_producao_seq'::regclass),
+    tipo_papel_id integer,
+    gramatura_id integer,
+    formato_id integer,
+    fsc_id integer
 );
 
 
@@ -457,14 +461,8 @@ CREATE TABLE public.ordem_producao_maquinas (
     ordem_id integer NOT NULL,
     equipamento_id integer NOT NULL,
     tiragem_em_folhas integer,
-    giros_previstos integer,
     tempo_producao_previsto_ms bigint,
-    sequencia_producao integer,
-    qtde_cores_id integer,
-    tipo_papel_id integer,
-    gramatura_id integer,
-    formato_id integer,
-    fsc_id integer
+    sequencia_producao integer
 );
 
 
@@ -1214,51 +1212,11 @@ ALTER TABLE ONLY public.ordem_producao_maquinas
 
 
 --
--- Name: ordem_producao_maquinas fk_opm_formato; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.ordem_producao_maquinas
-    ADD CONSTRAINT fk_opm_formato FOREIGN KEY (formato_id) REFERENCES public.formatos_tipos(id);
-
-
---
--- Name: ordem_producao_maquinas fk_opm_fsc; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.ordem_producao_maquinas
-    ADD CONSTRAINT fk_opm_fsc FOREIGN KEY (fsc_id) REFERENCES public.fsc_tipos(id);
-
-
---
--- Name: ordem_producao_maquinas fk_opm_gramatura; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.ordem_producao_maquinas
-    ADD CONSTRAINT fk_opm_gramatura FOREIGN KEY (gramatura_id) REFERENCES public.gramaturas_tipos(id);
-
-
---
 -- Name: ordem_producao_maquinas fk_opm_ordem; Type: FK CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.ordem_producao_maquinas
     ADD CONSTRAINT fk_opm_ordem FOREIGN KEY (ordem_id) REFERENCES public.ordem_producao(id) ON DELETE CASCADE;
-
-
---
--- Name: ordem_producao_maquinas fk_opm_qtde_cores; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.ordem_producao_maquinas
-    ADD CONSTRAINT fk_opm_qtde_cores FOREIGN KEY (qtde_cores_id) REFERENCES public.qtde_cores_tipos(id);
-
-
---
--- Name: ordem_producao_maquinas fk_opm_tipo_papel; Type: FK CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.ordem_producao_maquinas
-    ADD CONSTRAINT fk_opm_tipo_papel FOREIGN KEY (tipo_papel_id) REFERENCES public.tipos_papel(id);
 
 
 --
@@ -1323,6 +1281,202 @@ ALTER TABLE ONLY public.paradas_setup
 
 ALTER TABLE ONLY public.apontamento
     ADD CONSTRAINT fk_turno FOREIGN KEY (turno_id) REFERENCES public.turnos_tipos(id) ON DELETE SET NULL;
+
+
+--
+-- Name: equipamento_campos; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.equipamento_campos (
+    id integer NOT NULL,
+    nome_campo character varying(100) NOT NULL,
+    label_traducao character varying(100) NOT NULL,
+    tipo_dado character varying(50) NOT NULL,
+    widget_type character varying(50),
+    lookup_table character varying(100)
+);
+
+
+ALTER TABLE public.equipamento_campos OWNER TO postgres;
+
+--
+-- Name: equipamento_campos_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.equipamento_campos_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.equipamento_campos_id_seq OWNER TO postgres;
+
+--
+-- Name: equipamento_campos_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.equipamento_campos_id_seq OWNED BY public.equipamento_campos.id;
+
+
+--
+-- Name: equipamentos_tipos_campos; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.equipamentos_tipos_campos (
+    equipamento_tipo_id integer NOT NULL,
+    equipamento_campo_id integer NOT NULL,
+    ordem_exibicao integer
+);
+
+
+ALTER TABLE public.equipamentos_tipos_campos OWNER TO postgres;
+
+--
+-- Name: ordem_producao_maquinas_valores; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.ordem_producao_maquinas_valores (
+    id integer NOT NULL,
+    ordem_producao_maquinas_id integer NOT NULL,
+    equipamento_campo_id integer NOT NULL,
+    valor text
+);
+
+
+ALTER TABLE public.ordem_producao_maquinas_valores OWNER TO postgres;
+
+--
+-- Name: ordem_producao_maquinas_valores_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.ordem_producao_maquinas_valores_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE public.ordem_producao_maquinas_valores_id_seq OWNER TO postgres;
+--
+-- Name: ordem_producao_maquinas_valores_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: postgres
+--
+
+ALTER SEQUENCE public.ordem_producao_maquinas_valores_id_seq OWNED BY public.ordem_producao_maquinas_valores.id;
+
+
+--
+-- Name: equipamento_campos id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipamento_campos ALTER COLUMN id SET DEFAULT nextval('public.equipamento_campos_id_seq'::regclass);
+
+
+--
+-- Name: ordem_producao_maquinas_valores id; Type: DEFAULT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ordem_producao_maquinas_valores ALTER COLUMN id SET DEFAULT nextval('public.ordem_producao_maquinas_valores_id_seq'::regclass);
+
+
+--
+-- Name: equipamento_campos equipamento_campos_nome_campo_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipamento_campos
+    ADD CONSTRAINT equipamento_campos_nome_campo_key UNIQUE (nome_campo);
+
+
+--
+-- Name: equipamento_campos equipamento_campos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipamento_campos
+    ADD CONSTRAINT equipamento_campos_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: equipamentos_tipos_campos equipamentos_tipos_campos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipamentos_tipos_campos
+    ADD CONSTRAINT equipamentos_tipos_campos_pkey PRIMARY KEY (equipamento_tipo_id, equipamento_campo_id);
+
+
+--
+-- Name: ordem_producao_maquinas_valores ordem_producao_maquinas_valores_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ordem_producao_maquinas_valores
+    ADD CONSTRAINT ordem_producao_maquinas_valores_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: ordem_producao fk_op_formato; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ordem_producao
+    ADD CONSTRAINT fk_op_formato FOREIGN KEY (formato_id) REFERENCES public.formatos_tipos(id);
+
+
+--
+-- Name: ordem_producao fk_op_fsc; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ordem_producao
+    ADD CONSTRAINT fk_op_fsc FOREIGN KEY (fsc_id) REFERENCES public.fsc_tipos(id);
+
+
+--
+-- Name: ordem_producao fk_op_gramatura; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ordem_producao
+    ADD CONSTRAINT fk_op_gramatura FOREIGN KEY (gramatura_id) REFERENCES public.gramaturas_tipos(id);
+
+
+--
+-- Name: ordem_producao fk_op_tipo_papel; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ordem_producao
+    ADD CONSTRAINT fk_op_tipo_papel FOREIGN KEY (tipo_papel_id) REFERENCES public.tipos_papel(id);
+
+
+--
+-- Name: equipamentos_tipos_campos fk_etc_campo; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipamentos_tipos_campos
+    ADD CONSTRAINT fk_etc_campo FOREIGN KEY (equipamento_campo_id) REFERENCES public.equipamento_campos(id) ON DELETE CASCADE;
+
+
+--
+-- Name: equipamentos_tipos_campos fk_etc_equipamento_tipo; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.equipamentos_tipos_campos
+    ADD CONSTRAINT fk_etc_equipamento_tipo FOREIGN KEY (equipamento_tipo_id) REFERENCES public.equipamentos_tipos(id) ON DELETE CASCADE;
+
+
+--
+-- Name: ordem_producao_maquinas_valores fk_opmv_campo; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ordem_producao_maquinas_valores
+    ADD CONSTRAINT fk_opmv_campo FOREIGN KEY (equipamento_campo_id) REFERENCES public.equipamento_campos(id) ON DELETE CASCADE;
+
+
+--
+-- Name: ordem_producao_maquinas_valores fk_opmv_opm; Type: FK CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.ordem_producao_maquinas_valores
+    ADD CONSTRAINT fk_opmv_opm FOREIGN KEY (ordem_producao_maquinas_id) REFERENCES public.ordem_producao_maquinas(id) ON DELETE CASCADE;
 
 
 --

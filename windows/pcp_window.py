@@ -16,11 +16,14 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
 import matplotlib.pyplot as plt
+import threading
+import queue
 
 # --- 1. Importações Corrigidas ---
 from database import get_db_connection, release_db_connection
 from schemas import LOOKUP_TABLE_SCHEMAS
 from languages import LANGUAGES
+from services import get_equipment_fields, get_field_id_by_name, ServiceError, create_production_order
 
 # Importa as outras janelas que esta classe precisa abrir
 from .edit_order_window import EditOrdemWindow
@@ -35,15 +38,12 @@ class PCPWindow(tb.Toplevel):
         self.current_language = self.db_config.get('language', 'portugues')
         self.title(self.get_string('btn_pcp_management'))
         
-        # MOD: Remove a geometria fixa e inicia a janela maximizada para melhor aproveitamento de tela.
         self.state('zoomed')
-        # MOD: Define um tamanho mínimo para a janela para garantir que os elementos principais sejam visíveis.
         self.wm_minsize(1024, 768)
 
         self.transient(master)
         self.focus_set()
 
-        # Configurações da janela (sem alterações)
         self.fields_config = {
             "numero_wo": {"label_key": "col_wo", "widget": "Entry"},
             "pn_partnumber": {"label_key": "PN (Partnumber)", "widget": "Entry"},
@@ -51,34 +51,42 @@ class PCPWindow(tb.Toplevel):
             "data_previsao_entrega": {"label_key": "col_data_previsao", "widget": "DateEntry"},
             "acabamento": {"label_key": "Acabamento", "widget": "Listbox"},
         }
-        self.machine_fields_left = {
-            "equipamento_id": {"label_key": "equipment_label", "widget": "Combobox", "lookup": "equipamentos_tipos"},
-            "tiragem_em_folhas": {"label_key": "col_tiragem_em_folhas", "widget": "Entry"},
-            "giros_previstos": {"label_key": "giros_previstos", "widget": "Entry"},
-            "qtde_cores_id": {"label_key": "col_qtde_cores", "widget": "Combobox", "lookup": "qtde_cores_tipos"},
-        }
-        self.machine_fields_right = {
+        self.material_fields = {
             "tipo_papel_id": {"label_key": "col_tipo_papel", "widget": "Combobox", "lookup": "tipos_papel"},
             "gramatura_id": {"label_key": "col_gramatura", "widget": "Combobox", "lookup": "gramaturas_tipos"},
             "formato_id": {"label_key": "col_formato", "widget": "Combobox", "lookup": "formatos_tipos"},
             "fsc_id": {"label_key": "col_fsc", "widget": "Combobox", "lookup": "fsc_tipos"},
         }
+        self.machine_fields_static = {
+            "equipamento_id": {"label_key": "equipment_label", "widget": "Combobox", "lookup": "equipamentos_tipos"},
+            "tiragem_em_folhas": {"label_key": "col_tiragem_em_folhas", "widget": "Entry"},
+        }
         self.widgets = {}
-        self.machine_widgets = {}
+        self.material_widgets = {}
+        self.machine_static_widgets = {}
+        self.machine_dynamic_widgets = {}
+        
         self.giros_map = {}
         self.acabamentos_map = {}
         self.equipment_speed_map = {}
+        self.equipamentos_map = {}
+        self.cores_map = {}
+        self.papeis_map = {}
+        self.gramaturas_map = {}
+        self.fsc_map = {}
+        self.formatos_map = {}
+        
+        self.data_queue = queue.Queue()
         
         self.create_widgets()
         self.load_all_combobox_data()
-        self.load_ordens()
+        # self.start_load_ordens() # Moved to create_widgets after tree initialization
 
     def get_string(self, key, **kwargs):
         lang_dict = LANGUAGES.get(self.current_language, LANGUAGES['portugues'])
         return lang_dict.get(key, key).format(**kwargs)
 
     def create_widgets(self):
-        # MOD: Adiciona um Canvas com barra de rolagem para o conteúdo principal, garantindo usabilidade em telas menores.
         canvas = Canvas(self, borderwidth=0, highlightthickness=0)
         scrollbar = tb.Scrollbar(self, orient=VERTICAL, command=canvas.yview)
         canvas.configure(yscrollcommand=scrollbar.set)
@@ -89,7 +97,6 @@ class PCPWindow(tb.Toplevel):
         scrollable_frame = tb.Frame(canvas)
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", tags="scrollable_frame")
         
-        # MOD: Funções para reconfigurar a área de rolagem quando a janela ou o frame mudam de tamanho.
         def on_canvas_configure(event):
             canvas.itemconfig("scrollable_frame", width=event.width)
 
@@ -101,13 +108,11 @@ class PCPWindow(tb.Toplevel):
 
         main_frame = tb.Frame(scrollable_frame, padding=15)
         main_frame.pack(fill=BOTH, expand=True)
-        # MOD: Configura a coluna principal para expandir horizontalmente.
         main_frame.grid_columnconfigure(0, weight=1)
 
         form_frame = tb.LabelFrame(main_frame, text=self.get_string('new_order_section'), bootstyle=PRIMARY, padding=10)
         form_frame.pack(fill=X, pady=(0, 10), anchor='n')
-        # MOD: Configura as colunas do frame do formulário para se expandirem igualmente.
-        form_frame.grid_columnconfigure((0, 1), weight=1)
+        form_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
         left_form_frame = tb.Frame(form_frame)
         left_form_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
@@ -121,8 +126,18 @@ class PCPWindow(tb.Toplevel):
             widget.grid(row=i, column=1, padx=5, pady=5, sticky='ew')
             self.widgets[key] = widget
 
+        material_details_frame = tb.LabelFrame(form_frame, text="Detalhes do Material", bootstyle=INFO, padding=10)
+        material_details_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        material_details_frame.grid_columnconfigure(1, weight=1)
+
+        for i, (key, config) in enumerate(self.material_fields.items()):
+            tb.Label(material_details_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky='w')
+            widget = self.create_widget_from_config(material_details_frame, config)
+            widget.grid(row=i, column=1, padx=5, pady=5, sticky='ew')
+            self.material_widgets[key] = widget
+
         acab_frame_outer = tb.LabelFrame(form_frame, text=self.get_string("Acabamento"), bootstyle=PRIMARY)
-        acab_frame_outer.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        acab_frame_outer.grid(row=0, column=2, sticky="nsew", padx=(10, 0))
         acab_frame_outer.grid_rowconfigure(0, weight=1)
         acab_frame_outer.grid_columnconfigure(0, weight=1)
         acab_scrollbar = tb.Scrollbar(acab_frame_outer)
@@ -134,40 +149,31 @@ class PCPWindow(tb.Toplevel):
         
         machines_frame = tb.LabelFrame(main_frame, text="Detalhes de Produção por Máquina", bootstyle=INFO, padding=10)
         machines_frame.pack(fill=X, pady=15)
-        # MOD: Configura as colunas do frame de máquinas para se expandirem.
         machines_frame.grid_columnconfigure((0, 1), weight=1)
 
         machine_data_frame = tb.LabelFrame(machines_frame, text="Dados da Máquina", bootstyle=INFO, padding=10)
         machine_data_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
         machine_data_frame.grid_columnconfigure(1, weight=1)
 
-        material_details_frame = tb.LabelFrame(machines_frame, text="Detalhes do Material", bootstyle=INFO, padding=10)
-        material_details_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
-        material_details_frame.grid_columnconfigure(1, weight=1)
-
-        for i, (key, config) in enumerate(self.machine_fields_left.items()):
+        for i, (key, config) in enumerate(self.machine_fields_static.items()):
             tb.Label(machine_data_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky='w')
             widget = self.create_widget_from_config(machine_data_frame, config)
             widget.grid(row=i, column=1, padx=5, pady=5, sticky='ew')
-            self.machine_widgets[key] = widget
+            self.machine_static_widgets[key] = widget
         
-        for i, (key, config) in enumerate(self.machine_fields_right.items()):
-            tb.Label(material_details_frame, text=self.get_string(config["label_key"]) + ":").grid(row=i, column=0, padx=5, pady=5, sticky='w')
-            widget = self.create_widget_from_config(material_details_frame, config)
-            widget.grid(row=i, column=1, padx=5, pady=5, sticky='ew')
-            self.machine_widgets[key] = widget
+        self.machine_dynamic_frame = tb.LabelFrame(machines_frame, text="Dados Específicos", bootstyle=INFO, padding=10)
+        self.machine_dynamic_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        self.machine_dynamic_frame.grid_columnconfigure(1, weight=1)
             
-        self.machine_widgets["tiragem_em_folhas"].bind("<KeyRelease>", self._calcular_giros_para_maquina)
-        self.machine_widgets["qtde_cores_id"].bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
-        self.machine_widgets["equipamento_id"].bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
+        self.machine_static_widgets["equipamento_id"].bind("<<ComboboxSelected>>", self.update_machine_fields)
 
         tb.Button(machines_frame, text="➕ Adicionar Máquina à Lista", command=self.add_machine_to_list, bootstyle=SUCCESS).grid(row=1, column=0, columnspan=2, pady=10)
 
         tree_actions_frame = tb.Frame(main_frame)
         tree_actions_frame.pack(fill=X, pady=10)
 
-        cols = ("equipamento", "tiragem", "giros", "cores", "papel", "gramatura", "tempo_previsto")
-        headers = ("Equipamento", "Tiragem", "Giros", "Cores", "Papel", "Gramatura", "Tempo Previsto")
+        cols = ("equipamento", "tiragem", "giros", "cores", "tempo_previsto")
+        headers = ("Equipamento", "Tiragem", "Giros", "Cores", "Tempo Previsto")
         self.machines_tree = tb.Treeview(tree_actions_frame, columns=cols, show="headings", height=5)
         for col, header in zip(cols, headers):
             self.machines_tree.heading(col, text=header)
@@ -202,7 +208,6 @@ class PCPWindow(tb.Toplevel):
         self.pdf_export_button.pack(side='right', padx=5)
         
         orders_tree_frame = tb.LabelFrame(main_frame, text="Ordens de Produção Criadas", bootstyle=INFO, padding=10)
-        # MOD: Faz com que a tabela de ordens ocupe todo o espaço vertical restante.
         orders_tree_frame.pack(fill=BOTH, expand=True, pady=10)
         
         cols_orders = ("sequencia", "id", "wo", "cliente", "progresso", "data_previsao", "status_atraso")
@@ -226,6 +231,50 @@ class PCPWindow(tb.Toplevel):
         self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
 
+        # Call start_load_ordens after self.tree is initialized
+        self.start_load_ordens()
+
+    def update_machine_fields(self, event=None):
+        for widget in self.machine_dynamic_frame.winfo_children():
+            widget.destroy()
+        self.machine_dynamic_widgets.clear()
+
+        equipamento_nome = self.machine_static_widgets["equipamento_id"].get()
+        if not equipamento_nome:
+            return
+
+        equipamento_id = self.equipamentos_map.get(equipamento_nome)
+        if not equipamento_id:
+            return
+
+        try:
+            machine_fields = get_equipment_fields(equipamento_id)
+        except ServiceError as e:
+            messagebox.showerror("Erro", f"Falha ao carregar campos do equipamento: {e}", parent=self)
+            return
+
+        for i, field_config in enumerate(machine_fields):
+            label_key = field_config["label_traducao"]
+            label = tb.Label(self.machine_dynamic_frame, text=self.get_string(label_key) + ":")
+            label.grid(row=i, column=0, padx=5, pady=5, sticky='w')
+
+            config = {
+                "widget": field_config["widget_type"],
+                "lookup": field_config["lookup_table"]
+            }
+            
+            widget = self.create_widget_from_config(self.machine_dynamic_frame, config)
+            widget.grid(row=i, column=1, padx=5, pady=5, sticky='ew')
+            
+            self.machine_dynamic_widgets[field_config["nome_campo"]] = widget
+            
+            if config["lookup"]:
+                # Load data for comboboxes dynamically
+                if config["lookup"] == "qtde_cores_tipos":
+                    widget['values'] = list(self.cores_map.keys())
+                    if field_config['nome_campo'] == 'qtde_cores_id':
+                        widget.bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
+
     def create_widget_from_config(self, parent, config):
         if config.get("widget") == "Combobox": return tb.Combobox(parent, state="readonly")
         elif config.get("widget") == "DateEntry": return DateEntry(parent, dateformat='%d/%m/%Y')
@@ -238,25 +287,44 @@ class PCPWindow(tb.Toplevel):
             with conn.cursor() as cur:
                 cur.execute('SELECT descricao, giros FROM qtde_cores_tipos')
                 self.giros_map = {desc: giros if giros is not None else 1 for desc, giros in cur.fetchall()}
-                
+
                 schemas = LOOKUP_TABLE_SCHEMAS
-                
-                for key, widget in self.machine_widgets.items():
+
+                lookup_to_map = {
+                    "equipamentos_tipos": (self.equipamentos_map, "id", "descricao"),
+                    "qtde_cores_tipos": (self.cores_map, "id", "descricao"),
+                    "tipos_papel": (self.papeis_map, "id", "descricao"),
+                    "gramaturas_tipos": (self.gramaturas_map, "id", "valor"),
+                    "fsc_tipos": (self.fsc_map, "id", "descricao"),
+                    "formatos_tipos": (self.formatos_map, "id", "descricao"),
+                }
+
+                all_widgets = {**self.material_widgets, **self.machine_static_widgets}
+                all_configs = {**self.material_fields, **self.machine_fields_static}
+
+                for key, widget in all_widgets.items():
                     if isinstance(widget, tb.Combobox):
-                        config = self.machine_fields_left.get(key) or self.machine_fields_right.get(key, {})
+                        config = all_configs.get(key, {})
                         lookup_ref = config.get("lookup")
-                        if lookup_ref and lookup_ref in schemas:
+                        if lookup_ref in schemas and lookup_ref in lookup_to_map:
                             schema_info = schemas[lookup_ref]
-                            db_col = 'valor' if lookup_ref == 'gramaturas_tipos' else 'descricao'
-                            cur.execute(f'SELECT DISTINCT "{db_col}" FROM {schema_info["table"]} ORDER BY "{db_col}"')
-                            widget['values'] = [str(row[0]) for row in cur.fetchall()]
+                            target_map, id_col, val_col = lookup_to_map[lookup_ref]
+                            
+                            cur.execute(f'SELECT {id_col}, {val_col} FROM {schema_info["table"]} ORDER BY {val_col}')
+                            
+                            fetched_data = cur.fetchall()
+                            widget['values'] = [str(row[1]) for row in fetched_data]
+                            
+                            target_map.clear()
+                            for id_val, desc_val in fetched_data:
+                                target_map[str(desc_val)] = id_val
 
                 acab_widget = self.widgets.get("acabamento")
                 if acab_widget and isinstance(acab_widget, Listbox):
                     acab_widget.delete(0, 'end')
                     schema_info_acab = schemas["acabamentos_tipos"]
                     cur.execute(f'SELECT id, descricao FROM {schema_info_acab["table"]} ORDER BY descricao')
-                    self.acabamentos_map = {}
+                    self.acabamentos_map.clear()
                     for acab_id, desc in cur.fetchall():
                         acab_widget.insert('end', desc)
                         self.acabamentos_map[desc] = acab_id
@@ -266,15 +334,17 @@ class PCPWindow(tb.Toplevel):
             if conn:
                 release_db_connection(conn)
 
-    def load_ordens(self):
+    def start_load_ordens(self):
         for i in self.tree.get_children():
             self.tree.delete(i)
-        
+        self.config(cursor="watch")
+        self.update_idletasks()
+        threading.Thread(target=self._background_load_ordens, daemon=True).start()
+        self.after(100, self._check_load_ordens_queue)
+
+    def _background_load_ordens(self):
         conn = None
         try:
-            self.config(cursor="watch")
-            self.update_idletasks()
-
             conn = get_db_connection()
             with conn.cursor() as cur:
                 sql_query = """
@@ -305,35 +375,47 @@ class PCPWindow(tb.Toplevel):
                     ORDER BY op.sequencia_producao ASC;
                 """
                 cur.execute(sql_query)
-                
-                for row in cur.fetchall():
-                    (seq, ordem_id, wo, cliente, previsao, total_servicos, concluidos, em_prod, pendente, status_atraso) = row
-                    
-                    progresso_txt = "Sem serviços definidos"
-                    if total_servicos and total_servicos > 0:
-                        if em_prod:
-                            progresso_txt = f"Etapa {concluidos + 1}/{total_servicos}: {em_prod} (Em Produção)"
-                        elif pendente:
-                            progresso_txt = f"Etapa {concluidos + 1}/{total_servicos}: {pendente} (Aguardando)"
-                        elif concluidos == total_servicos:
-                            progresso_txt = "Todas as etapas concluídas"
-
-                    data_formatada = previsao.strftime('%d/%m/%Y') if previsao else ""
-                    
-                    tags = ()
-                    if status_atraso == "ATRASADO":
-                        tags = ('atrasado',)
-                        status_atraso = f"⚠️ {status_atraso}"
-
-                    values = (seq, ordem_id, wo, cliente, progresso_txt, data_formatada, status_atraso)
-                    self.tree.insert("", "end", values=values, tags=tags)
-                    
+                results = cur.fetchall()
+                self.data_queue.put(results)
         except Exception as e:
-            messagebox.showerror("Erro ao Carregar", f"Falha ao carregar ordens de produção: {e}", parent=self)
+            self.data_queue.put(e)
         finally:
             if conn:
                 release_db_connection(conn)
+
+    def _check_load_ordens_queue(self):
+        try:
+            result = self.data_queue.get_nowait()
             self.config(cursor="")
+
+            if isinstance(result, Exception):
+                messagebox.showerror("Erro ao Carregar", f"Falha ao carregar ordens de produção: {result}", parent=self)
+                return
+
+            for row in result:
+                (seq, ordem_id, wo, cliente, previsao, total_servicos, concluidos, em_prod, pendente, status_atraso) = row
+                
+                progresso_txt = "Sem serviços definidos"
+                if total_servicos and total_servicos > 0:
+                    if em_prod:
+                        progresso_txt = f"Etapa {concluidos + 1}/{total_servicos}: {em_prod} (Em Produção)"
+                    elif pendente:
+                        progresso_txt = f"Etapa {concluidos + 1}/{total_servicos}: {pendente} (Aguardando)"
+                    elif concluidos == total_servicos:
+                        progresso_txt = "Todas as etapas concluídas"
+
+                data_formatada = previsao.strftime('%d/%m/%Y') if previsao else ""
+                
+                tags = ()
+                if status_atraso == "ATRASADO":
+                    tags = ('atrasado',)
+                    status_atraso = f"⚠️ {status_atraso}"
+
+                values = (seq, ordem_id, wo, cliente, progresso_txt, data_formatada, status_atraso)
+                self.tree.insert("", "end", values=values, tags=tags)
+
+        except queue.Empty:
+            self.after(100, self._check_load_ordens_queue)
 
     def remove_selected_machine(self):
         for item in self.machines_tree.selection():
@@ -346,72 +428,68 @@ class PCPWindow(tb.Toplevel):
                 messagebox.showwarning("Validação", "WO, Cliente e ao menos uma máquina são obrigatórios.", parent=self)
                 return
 
-            conn = None
             try:
-                conn = get_db_connection()
-                with conn.cursor() as cur:
-                    data_previsao_str = self.widgets["data_previsao_entrega"].entry.get()
-                    data_previsao = datetime.strptime(data_previsao_str, '%d/%m/%Y').date() if data_previsao_str else None
-                    pn_partnumber = self.widgets["pn_partnumber"].get()
-                    
-                    query_op = """
-                        INSERT INTO ordem_producao (numero_wo, pn_partnumber, cliente, data_previsao_entrega, status)
-                        VALUES (%s, %s, %s, %s, 'Em Aberto') RETURNING id;
-                    """
-                    cur.execute(query_op, (wo_number, pn_partnumber, cliente, data_previsao))
-                    ordem_id = cur.fetchone()[0]
+                data_previsao_str = self.widgets["data_previsao_entrega"].entry.get()
+                data_previsao = datetime.strptime(data_previsao_str, '%d/%m/%Y').date() if data_previsao_str else None
+                pn_partnumber = self.widgets["pn_partnumber"].get()
+                
+                tipo_papel_id = self.papeis_map.get(self.material_widgets["tipo_papel_id"].get())
+                gramatura_id = self.gramaturas_map.get(self.material_widgets["gramatura_id"].get())
+                formato_id = self.formatos_map.get(self.material_widgets["formato_id"].get())
+                fsc_id = self.fsc_map.get(self.material_widgets["fsc_id"].get())
 
-                    selected_indices = self.widgets["acabamento"].curselection()
-                    for i in selected_indices:
-                        desc = self.widgets["acabamento"].get(i)
-                        acab_id = self.acabamentos_map.get(desc)
-                        if acab_id:
-                            cur.execute(
-                                "INSERT INTO ordem_producao_acabamentos (ordem_id, acabamento_id) VALUES (%s, %s)",
-                                (ordem_id, acab_id)
-                            )
+                order_data = {
+                    "numero_wo": wo_number,
+                    "pn_partnumber": pn_partnumber,
+                    "cliente": cliente,
+                    "data_previsao_entrega": data_previsao,
+                    "tipo_papel_id": tipo_papel_id,
+                    "gramatura_id": gramatura_id,
+                    "formato_id": formato_id,
+                    "fsc_id": fsc_id
+                }
 
-                    sequencia_servico = 1
-                    for item in self.machines_tree.get_children():
-                        (equip_nome, tiragem_str, giros_str, cores_nome, papel_nome, gramatura_valor, _) = self.machines_tree.item(item, 'values')
-                        
-                        cur.execute("SELECT id FROM equipamentos_tipos WHERE descricao = %s", (equip_nome,))
-                        equipamento_id = cur.fetchone()[0]
-                        
-                        cur.execute("SELECT id FROM qtde_cores_tipos WHERE descricao = %s", (cores_nome,))
-                        qtde_cores_id = cur.fetchone()[0] if cores_nome and cur.rowcount > 0 else None
-                        
-                        cur.execute("SELECT id FROM tipos_papel WHERE descricao = %s", (papel_nome,))
-                        tipo_papel_id = cur.fetchone()[0] if papel_nome and cur.rowcount > 0 else None
+                acabamento_ids = []
+                selected_indices = self.widgets["acabamento"].curselection()
+                for i in selected_indices:
+                    desc = self.widgets["acabamento"].get(i)
+                    acab_id = self.acabamentos_map.get(desc)
+                    if acab_id:
+                        acabamento_ids.append(acab_id)
 
-                        cur.execute("SELECT id FROM gramaturas_tipos WHERE valor = %s", (str(gramatura_valor),))
-                        gramatura_id = cur.fetchone()[0] if gramatura_valor and cur.rowcount > 0 else None
-                        
-                        query_maquina = """
-                            INSERT INTO ordem_producao_maquinas (ordem_id, equipamento_id, tiragem_em_folhas, giros_previstos, tempo_producao_previsto_ms, qtde_cores_id, tipo_papel_id, gramatura_id, sequencia_producao)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
-                        """
-                        cur.execute(query_maquina, (ordem_id, equipamento_id, int(tiragem_str), int(giros_str), int(tiragem_str), qtde_cores_id, tipo_papel_id, gramatura_id, sequencia_servico))
-                        maquina_id = cur.fetchone()[0]
+                machine_list = []
+                for item in self.machines_tree.get_children():
+                    item_data = self.machines_tree.item(item)
+                    (equip_nome, tiragem_str, _, _, tempo_formatado) = item_data['values']
+                    dynamic_values_str = item_data['tags'][0] if item_data['tags'] else "{}"
+                    dynamic_values = eval(dynamic_values_str)
 
-                        query_servico = """
-                            INSERT INTO ordem_servicos (ordem_id, maquina_id, descricao, status, sequencia)
-                            VALUES (%s, %s, %s, 'Pendente', %s);
-                        """
-                        cur.execute(query_servico, (ordem_id, maquina_id, equip_nome, sequencia_servico))
-                        
-                        sequencia_servico += 1
+                    equipamento_id = self.equipamentos_map.get(equip_nome)
+                    if not equipamento_id:
+                        raise ValueError(f"Equipamento '{equip_nome}' não encontrado no cache.")
 
-                conn.commit()
+                    # Convert tempo_formatado (HH:MM:SS) to milliseconds
+                    h, m, s = map(int, tempo_formatado.split(':'))
+                    tempo_previsto_ms = (h * 3600 + m * 60 + s) * 1000
+
+                    machine_list.append({
+                        "equipamento_id": equipamento_id,
+                        "equipamento_nome": equip_nome,
+                        "tiragem": int(tiragem_str),
+                        "tempo_previsto_ms": tempo_previsto_ms,
+                        "dynamic_fields": dynamic_values
+                    })
+                
+                create_production_order(order_data, machine_list, acabamento_ids)
+
                 messagebox.showinfo("Sucesso", "Ordem de Produção salva com sucesso!", parent=self)
                 self.clear_fields()
-                self.load_ordens()
+                self.start_load_ordens()
 
+            except ServiceError as e:
+                messagebox.showerror("Erro de Serviço", f"Não foi possível salvar a ordem:\n{e}", parent=self)
             except Exception as e:
-                if conn: conn.rollback()
-                messagebox.showerror("Erro de Banco de Dados", f"Não foi possível salvar a ordem:\n{e}", parent=self)
-            finally:
-                if conn: release_db_connection(conn)
+                messagebox.showerror("Erro", f"Ocorreu um erro inesperado:\n{e}", parent=self)
 
     def cancel_ordem(self):
         selected_item = self.tree.focus()
@@ -431,7 +509,7 @@ class PCPWindow(tb.Toplevel):
                 cur.execute("DELETE FROM ordem_producao WHERE id = %s", (ordem_id,))
             conn.commit()
             messagebox.showinfo("Sucesso", self.get_string('cancel_order_success'), parent=self)
-            self.load_ordens()
+            self.start_load_ordens()
         except Exception as e:
             if conn: conn.rollback()
             messagebox.showerror("Erro", self.get_string('cancel_order_failed', error=e), parent=self)
@@ -451,7 +529,7 @@ class PCPWindow(tb.Toplevel):
                 cur.execute("UPDATE ordem_producao SET sequencia_producao = %s WHERE id = %s", (seq2, id1))
                 cur.execute("UPDATE ordem_producao SET sequencia_producao = %s WHERE id = %s", (seq1, id2))
             conn.commit()
-            self.load_ordens()
+            self.start_load_ordens()
         except Exception as e:
             if conn: conn.rollback()
             messagebox.showerror("Erro ao Reordenar", f"Não foi possível alterar a sequência: {e}", parent=self)
@@ -492,36 +570,49 @@ class PCPWindow(tb.Toplevel):
 
     def clear_fields(self):
         """Limpa todos os campos do formulário e a lista de máquinas."""
-        for key, widget in self.widgets.items():
-            if not widget: continue
+        for widget in self.widgets.values():
             if isinstance(widget, tb.Combobox):
                 widget.set('')
             elif isinstance(widget, DateEntry):
                 widget.entry.delete(0, 'end')
             elif isinstance(widget, Listbox):
                 widget.selection_clear(0, 'end')
-            else:
+            elif isinstance(widget, tb.Entry):
                 widget.delete(0, 'end')
-        
-        for widget in self.machine_widgets.values():
-            if isinstance(widget, tb.Entry):
-                widget.delete(0, 'end')
-            elif isinstance(widget, tb.Combobox):
+
+        for widget in self.material_widgets.values():
+            if isinstance(widget, tb.Combobox):
                 widget.set('')
+            elif isinstance(widget, tb.Entry):
+                widget.delete(0, 'end')
+
+        for widget in self.machine_static_widgets.values():
+            if isinstance(widget, tb.Combobox):
+                widget.set('')
+            elif isinstance(widget, tb.Entry):
+                widget.delete(0, 'end')
+
+        for widget in self.machine_dynamic_frame.winfo_children():
+            widget.destroy()
+        self.machine_dynamic_widgets.clear()
 
         for item in self.machines_tree.get_children():
             self.machines_tree.delete(item)
 
     def _calcular_giros_para_maquina(self, event=None):
         try:
-            equipamento_selecionado = self.machine_widgets["equipamento_id"].get()
-            tiragem_str = self.machine_widgets["tiragem_em_folhas"].get()
-            cores_desc = self.machine_widgets["qtde_cores_id"].get()
-            giros_widget = self.machine_widgets["giros_previstos"]
+            equipamento_selecionado = self.machine_static_widgets["equipamento_id"].get()
+            tiragem_str = self.machine_static_widgets["tiragem_em_folhas"].get()
+            
+            if "impressora" not in equipamento_selecionado.lower():
+                return
+
+            cores_desc = self.machine_dynamic_widgets["qtde_cores_id"].get()
+            giros_widget = self.machine_dynamic_widgets["giros_previstos"]
             
             giros_widget.delete(0, 'end')
 
-            if "impressora" in equipamento_selecionado.lower() and tiragem_str and cores_desc:
+            if tiragem_str and cores_desc:
                 tiragem_folhas = int(tiragem_str)
                 multiplicador = self.giros_map.get(cores_desc, 1)
                 giros_calculado = tiragem_folhas * multiplicador
@@ -529,8 +620,8 @@ class PCPWindow(tb.Toplevel):
             else:
                 giros_widget.insert(0, "0")
                 
-        except (ValueError, IndexError):
-            giros_widget = self.machine_widgets.get("giros_previstos")
+        except (ValueError, IndexError, KeyError):
+            giros_widget = self.machine_dynamic_widgets.get("giros_previstos")
             if giros_widget:
                 giros_widget.delete(0, 'end')
                 giros_widget.insert(0, "0")
@@ -565,8 +656,8 @@ class PCPWindow(tb.Toplevel):
         return f"{hours:02}:{minutes:02}:{seconds:02}"
 
     def add_machine_to_list(self):
-        equipamento = self.machine_widgets["equipamento_id"].get()
-        tiragem_str = self.machine_widgets["tiragem_em_folhas"].get()
+        equipamento = self.machine_static_widgets["equipamento_id"].get()
+        tiragem_str = self.machine_static_widgets["tiragem_em_folhas"].get()
         if not all([equipamento, tiragem_str]):
             messagebox.showwarning("Campo Obrigatório", "Equipamento e Tiragem são obrigatórios.", parent=self)
             return
@@ -577,19 +668,27 @@ class PCPWindow(tb.Toplevel):
             tempo_total_s = tempo_total_ms / 1000.0
             tempo_formatado = self.format_seconds_to_hhmmss(tempo_total_s)
             
-            giros = self.machine_widgets["giros_previstos"].get()
-            cores = self.machine_widgets["qtde_cores_id"].get()
-            papel = self.machine_widgets["tipo_papel_id"].get()
-            gramatura = self.machine_widgets["gramatura_id"].get()
-
-            values_to_insert = (equipamento, tiragem, giros, cores, papel, gramatura, tempo_formatado)
-            self.machines_tree.insert("", "end", values=values_to_insert)
-
-            for widget in self.machine_widgets.values():
-                if isinstance(widget, tb.Entry): widget.delete(0, 'end')
-                elif isinstance(widget, tb.Combobox): widget.set('')
+            dynamic_values = {key: widget.get() for key, widget in self.machine_dynamic_widgets.items()}
             
-            self._calcular_giros_para_maquina()
+            giros = dynamic_values.get("giros_previstos", "")
+            cores = dynamic_values.get("qtde_cores_id", "")
+
+            # Store dynamic values in the treeview item's tags for later retrieval
+            self.machines_tree.insert("", "end", values=(equipamento, tiragem, giros, cores, tempo_formatado), tags=str(dynamic_values))
+
+            # Clear static and dynamic fields
+            for widget in self.machine_static_widgets.values():
+                if isinstance(widget, tb.Entry):
+                    widget.delete(0, 'end')
+                elif isinstance(widget, tb.Combobox):
+                    widget.set('')
+            
+            for widget in self.machine_dynamic_widgets.values():
+                if isinstance(widget, tb.Entry):
+                    widget.delete(0, 'end')
+                elif isinstance(widget, tb.Combobox):
+                    widget.set('')
+
         except (ValueError, TypeError):
             messagebox.showerror("Erro de Formato", "O valor da Tiragem deve ser um número.", parent=self)
 
@@ -609,7 +708,7 @@ class PCPWindow(tb.Toplevel):
         try:
             file_path = filedialog.asksaveasfilename(
                 defaultextension=".xlsx",
-                filetypes=[("Ficheiros Excel", "*.xlsx"), ("Todos os ficheiros", "*.*")],
+                filetypes=[("Ficheiros Excel", "*.xlsx"), ("Todos os ficheiros", "*.* ")],
                 title="Salvar o relatório Excel"
             )
             if not file_path:
@@ -627,7 +726,7 @@ class PCPWindow(tb.Toplevel):
             
         filepath = filedialog.asksaveasfilename(
             defaultextension=".pdf",
-            filetypes=[("Ficheiros PDF", "*.pdf"), ("Todos os ficheiros", "*.*")],
+            filetypes=[("Ficheiros PDF", "*.pdf"), ("Todos os ficheiros", "*.* ")],
             title="Salvar Relatório como PDF"
         )
         if not filepath:

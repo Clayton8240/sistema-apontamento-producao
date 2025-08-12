@@ -26,24 +26,20 @@ class UserManagerWindow(Toplevel):
         self.load_users()
 
     def get_string(self, key, **kwargs):
-        # Reutiliza a função get_string da janela mestre (MenuPrincipal)
         return self.master.get_string(key, **kwargs)
 
     def create_widgets(self):
         main_frame = tb.Frame(self, padding=15)
         main_frame.pack(fill=BOTH, expand=YES)
 
-        # Frame de botões de ação
         btn_frame = tb.Frame(main_frame)
         btn_frame.pack(fill=X, pady=(0, 10))
         
-        # MOD: Adicionados ícones aos botões
         tb.Button(btn_frame, text="➕ Adicionar Novo", bootstyle="success-outline", command=self.open_add_edit_dialog).pack(side=LEFT, padx=5)
         tb.Button(btn_frame, text="✏️ Editar Selecionado", bootstyle="info-outline", command=lambda: self.open_add_edit_dialog(edit_mode=True)).pack(side=LEFT, padx=5)
         tb.Button(btn_frame, text="Ativar/Desativar", bootstyle="warning-outline", command=self.toggle_user_status).pack(side=LEFT, padx=5)
         tb.Button(btn_frame, text="Redefinir Senha", bootstyle="danger-outline", command=self.reset_password).pack(side=LEFT, padx=5)
 
-        # Tabela (Treeview) para listar os usuários
         tree_frame = tb.LabelFrame(main_frame, text="Usuários Cadastrados", bootstyle=PRIMARY, padding=10)
         tree_frame.pack(fill=BOTH, expand=YES)
 
@@ -74,7 +70,6 @@ class UserManagerWindow(Toplevel):
             with conn.cursor() as cur:
                 cur.execute("SELECT id, nome_usuario, permissao, ativo FROM usuarios ORDER BY nome_usuario")
                 for row in cur.fetchall():
-                    # Formata o status booleano para um texto mais legível
                     status = "Ativo" if row[3] else "Inativo"
                     values = (row[0], row[1], row[2], status)
                     self.tree.insert("", END, values=values)
@@ -99,7 +94,6 @@ class UserManagerWindow(Toplevel):
         dialog.transient(self)
         dialog.grab_set()
 
-        # --- Widgets do formulário ---
         form_frame = tb.Frame(dialog, padding=20)
         form_frame.pack(fill=BOTH, expand=YES)
         
@@ -108,7 +102,7 @@ class UserManagerWindow(Toplevel):
         user_entry.grid(row=0, column=1, padx=5, pady=5, sticky=EW)
         user_entry.insert(0, username)
         if edit_mode:
-            user_entry.config(state="readonly") # Não permite alterar o nome de usuário
+            user_entry.config(state="readonly")
 
         tb.Label(form_frame, text="Permissão:").grid(row=1, column=0, padx=5, pady=5, sticky=W)
         perm_combo = tb.Combobox(form_frame, values=['admin', 'pcp', 'offset'], state="readonly")
@@ -116,7 +110,7 @@ class UserManagerWindow(Toplevel):
         if permission: perm_combo.set(permission)
         
         pass_entry, confirm_entry = None, None
-        if not edit_mode: # Só pede senha ao criar um novo usuário
+        if not edit_mode:
             tb.Label(form_frame, text="Senha:").grid(row=2, column=0, padx=5, pady=5, sticky=W)
             pass_entry = tb.Entry(form_frame, show="*")
             pass_entry.grid(row=2, column=1, padx=5, pady=5, sticky=EW)
@@ -125,8 +119,6 @@ class UserManagerWindow(Toplevel):
             confirm_entry = tb.Entry(form_frame, show="*")
             confirm_entry.grid(row=3, column=1, padx=5, pady=5, sticky=EW)
 
-        # --- Botão Salvar ---
-        # MOD: Alterar texto do botão para "Salvar Alterações" em modo de edição
         button_text = "Salvar Alterações" if edit_mode else "Salvar"
         btn_save = tb.Button(form_frame, text=button_text, bootstyle=SUCCESS,
                              command=lambda: self.save_user(
@@ -137,7 +129,7 @@ class UserManagerWindow(Toplevel):
         btn_save.grid(row=4, columnspan=2, pady=10)
 
     def save_user(self, dialog, user_id, username, permission, password, confirm_password):
-        """Salva um usuário novo ou edita um existente."""
+        """Salva um usuário novo ou edita um existente com validação aprimorada."""
         if not username or not permission:
             messagebox.showwarning("Campos Obrigatórios", "Nome de usuário e permissão são obrigatórios.", parent=dialog)
             return
@@ -147,18 +139,25 @@ class UserManagerWindow(Toplevel):
         
         try:
             with conn.cursor() as cur:
-                if user_id: # Modo de Edição
+                if user_id:  # Modo de Edição
                     cur.execute("UPDATE usuarios SET permissao = %s WHERE id = %s", (permission, user_id))
                     messagebox.showinfo("Sucesso", "Usuário atualizado com sucesso!", parent=self)
-                else: # Modo de Criação
+                else:  # Modo de Criação
                     if not password or not confirm_password:
                         messagebox.showwarning("Campos Obrigatórios", "Senha e confirmação são obrigatórias.", parent=dialog)
                         return
                     if password != confirm_password:
                         messagebox.showerror("Erro", "As senhas não coincidem.", parent=dialog)
                         return
+                    if len(password) < 6:
+                        messagebox.showerror("Senha Fraca", "A senha deve ter pelo menos 6 caracteres.", parent=dialog)
+                        return
 
-                    # Criptografa a senha com bcrypt
+                    cur.execute("SELECT id FROM usuarios WHERE nome_usuario = %s", (username,))
+                    if cur.fetchone():
+                        messagebox.showerror("Erro", f"O nome de usuário '{username}' já está em uso.", parent=dialog)
+                        return
+
                     senha_bytes = password.encode('utf-8')
                     senha_hash = bcrypt.hashpw(senha_bytes, bcrypt.gensalt())
                     
@@ -242,6 +241,9 @@ class UserManagerWindow(Toplevel):
                 return
             if new_pass != confirm_pass:
                 messagebox.showerror("Erro", "As senhas não coincidem.", parent=dialog)
+                return
+            if len(new_pass) < 6:
+                messagebox.showerror("Senha Fraca", "A nova senha deve ter pelo menos 6 caracteres.", parent=dialog)
                 return
 
             senha_bytes = new_pass.encode('utf-8')

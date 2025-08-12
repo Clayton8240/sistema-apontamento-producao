@@ -12,6 +12,7 @@ from .pcp_window import PCPWindow
 from .view_appointments_window import ViewAppointmentsWindow
 from .dashboard_manager_view import DashboardManagerView
 from .user_manager_window import UserManagerWindow # <-- NOVA IMPORTAÇÃO
+from .equipment_manager_window import EquipmentManagerWindow # <-- NOVA IMPORTAÇÃO
 from database import get_db_connection, release_db_connection
 
 class MenuPrincipalWindow(tb.Toplevel):
@@ -60,8 +61,8 @@ class MenuPrincipalWindow(tb.Toplevel):
         config_menu = tb.Menu(self.menubar, tearoff=0)
         config_menu.add_command(label=self.get_string('menu_db_config'), command=lambda: self.master.open_configure_db_window(self))
         config_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self, self.db_config, self.refresh_main_pcp_comboboxes))
+        config_menu.add_command(label=self.get_string('menu_manage_equipment'), command=self.open_equipment_manager)
         
-       
         config_menu.add_command(label="Gerenciar Usuários", command=self.open_user_manager)
 
         self.menubar.add_cascade(label=self.get_string('menu_settings'), menu=config_menu)
@@ -106,6 +107,13 @@ class MenuPrincipalWindow(tb.Toplevel):
             self.open_windows['user_manager'].protocol("WM_DELETE_WINDOW", lambda: self.on_window_close('user_manager'))
         else:
             self.open_windows['user_manager'].lift()
+
+    def open_equipment_manager(self):
+        if 'equipment_manager' not in self.open_windows or not self.open_windows['equipment_manager'].winfo_exists():
+            self.open_windows['equipment_manager'] = EquipmentManagerWindow(master=self, db_config=self.db_config)
+            self.open_windows['equipment_manager'].protocol("WM_DELETE_WINDOW", lambda: self.on_window_close('equipment_manager'))
+        else:
+            self.open_windows['equipment_manager'].lift()
 
     def on_window_close(self, window_key):
         if window_key in self.open_windows:

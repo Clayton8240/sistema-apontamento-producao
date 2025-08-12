@@ -5,6 +5,7 @@ Componentes de UI reutilizáveis, como janelas de gerenciamento.
 """
 
 import psycopg2
+from psycopg2 import sql
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from tkinter import messagebox, Toplevel, END, CENTER
@@ -98,13 +99,20 @@ class LookupTableManagerWindow(Toplevel):
             self.treeview.column(db_col, width=100, anchor=CENTER)
         try:
             with conn.cursor() as cur:
-                query_columns = ', '.join([f'"{col_data["db_column"]}"' for col_data in schema["columns"].values()])
-                cur.execute(f"SELECT {query_columns} FROM {schema['table']} ORDER BY \"{schema['pk_column']}\"")
+                query_columns = sql.SQL(', ').join(
+                    [sql.Identifier(col_data["db_column"]) for col_data in schema["columns"].values()]
+                )
+                query = sql.SQL("SELECT {columns} FROM {table} ORDER BY {pk}").format(
+                    columns=query_columns,
+                    table=sql.Identifier(schema['table']),
+                    pk=sql.Identifier(schema['pk_column'])
+                )
+                cur.execute(query)
                 for row in cur.fetchall(): self.treeview.insert("", END, values=row)
         except psycopg2.Error as e:
             messagebox.showerror(self.get_string('db_load_table_failed'), self.get_string('db_load_table_failed', display_name=self.get_string(schema['display_name_key']), error=e), parent=self)
         finally:
-            if conn: release_db_connection(conn) # CORRIGIDO
+            if conn: release_db_connection(conn)
 
     def open_add_edit_window(self, edit_mode=False):
         if not self.current_table:
@@ -177,13 +185,24 @@ class LookupTableManagerWindow(Toplevel):
         try:
             with conn.cursor() as cur:
                 if edit_mode:
-                    set_clauses = [f'"{db_col}" = %s' for db_col in data.keys()]
+                    set_clauses = sql.SQL(', ').join([
+                        sql.SQL('{col} = %s').format(col=sql.Identifier(db_col)) for db_col in data.keys()
+                    ])
                     values = list(data.values()) + [pk_value]
-                    query = f"UPDATE {schema['table']} SET {', '.join(set_clauses)} WHERE \"{schema['pk_column']}\" = %s"
+                    query = sql.SQL("UPDATE {table} SET {updates} WHERE {pk} = %s").format(
+                        table=sql.Identifier(schema['table']),
+                        updates=set_clauses,
+                        pk=sql.Identifier(schema['pk_column'])
+                    )
                 else:
-                    cols = [f'"{db_col}"' for db_col in data.keys()]
+                    cols = sql.SQL(', ').join(map(sql.Identifier, data.keys()))
+                    placeholders = sql.SQL(', ').join(sql.Placeholder() * len(data))
                     values = list(data.values())
-                    query = f"INSERT INTO {schema['table']} ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(values))})"
+                    query = sql.SQL("INSERT INTO {table} ({cols}) VALUES ({placeholders})").format(
+                        table=sql.Identifier(schema['table']),
+                        cols=cols,
+                        placeholders=placeholders
+                    )
                 
                 cur.execute(query, values)
             conn.commit()
@@ -195,7 +214,7 @@ class LookupTableManagerWindow(Toplevel):
             conn.rollback()
             messagebox.showerror(self.get_string('db_save_failed'), self.get_string('db_save_failed', error=e), parent=window)
         finally:
-            if conn: release_db_connection(conn) # CORRIGIDO
+            if conn: release_db_connection(conn)
 
     def delete_selected_entry(self):
         item = self.treeview.focus()
@@ -218,7 +237,11 @@ class LookupTableManagerWindow(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
-                cur.execute(f"DELETE FROM {schema['table']} WHERE \"{schema['pk_column']}\" = %s", (pk_val,))
+                query = sql.SQL("DELETE FROM {table} WHERE {pk} = %s").format(
+                    table=sql.Identifier(schema['table']),
+                    pk=sql.Identifier(schema['pk_column'])
+                )
+                cur.execute(query, (pk_val,))
             conn.commit()
             messagebox.showinfo(self.get_string('delete_selected_btn'), self.get_string('delete_success'), parent=self)
             self.load_table_data(self.current_table)
@@ -227,4 +250,4 @@ class LookupTableManagerWindow(Toplevel):
             conn.rollback()
             messagebox.showerror(self.get_string('delete_selected_btn'), self.get_string('db_delete_failed', error=e), parent=self)
         finally:
-            if conn: release_db_connection(conn) # CORRIGIDO
+            if conn: release_db_connection(conn)
