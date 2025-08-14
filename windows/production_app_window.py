@@ -121,10 +121,15 @@ class App(Toplevel):
                      list(self.production_fields.values())
         
         for widget in all_fields:
-            if isinstance(widget, (tb.Entry, tb.Combobox)):
-                style = widget.cget('bootstyle')
-                if 'danger' in style:
-                    widget.configure(bootstyle=style.replace('danger', ''))
+            if widget is None: # Adiciona verificação para None
+                continue
+            # Verifica se o widget tem o método cget e se 'bootstyle' é uma opção válida
+            if hasattr(widget, 'cget'):
+                config_options = widget.configure()
+                if config_options is not None and 'bootstyle' in config_options:
+                    style = widget.cget('bootstyle')
+                    if 'danger' in style:
+                        widget.configure(bootstyle=style.replace('danger', ''))
 
     def create_widgets(self):
         # --- Configuração do Grid Principal ---
@@ -145,11 +150,13 @@ class App(Toplevel):
         self.equipment_combobox = tb.Combobox(selection_frame, state="readonly")
         self.equipment_combobox.grid(row=0, column=1, sticky="ew", padx=PAD_X, pady=PAD_Y)
         self.initial_fields['equipment'] = self.equipment_combobox
+        self.equipment_combobox.bind("<<ComboboxSelected>>", self.on_equipment_select)
 
         tb.Label(selection_frame, text=self.get_string('service_on_machine_queue_label') + ": *").grid(row=1, column=0, sticky=W, padx=PAD_X, pady=PAD_Y)
         self.service_combobox = tb.Combobox(selection_frame, state="disabled")
         self.service_combobox.grid(row=1, column=1, sticky="ew", padx=PAD_X, pady=PAD_Y)
         self.initial_fields['service'] = self.service_combobox
+        self.service_combobox.bind("<<ComboboxSelected>>", self.on_service_select)
         
         tb.Label(selection_frame, text=self.get_string("printer_label") + ": *").grid(row=2, column=0, sticky=W, padx=PAD_X, pady=PAD_Y)
         self.impressor_combobox = tb.Combobox(selection_frame, state="readonly")
@@ -207,6 +214,7 @@ class App(Toplevel):
             entry = tb.Entry(prod_entries_frame)
             entry.pack(fill=X)
             self.production_fields[key] = entry
+
         self.production_fields['quantidadeproduzida'].bind("<KeyRelease>", self._calcular_giros_rodados)
         self.production_fields['giros_rodados'].config(state=DISABLED)
         tb.Label(prod_entries_frame, text=self.get_string("col_motivo_perda") + ":").pack(fill=X, pady=2)
@@ -230,7 +238,7 @@ class App(Toplevel):
 
         self.wo_info_frame = tb.LabelFrame(right_column_frame, text=self.get_string('order_info_section'), bootstyle=PRIMARY, padding=FRAME_PADDING)
         self.wo_info_frame.grid(row=0, column=0, sticky="new")
-        info_keys = {'col_wo': 'Nº WO', 'col_cliente': 'Cliente', 'equipment_label': 'Equipamento do Serviço', 'col_tipo_papel': 'Tipo Papel', 'col_tiragem_em_folhas': 'Tiragem Meta', 'col_qtde_cores': 'QTDE Cores', 'giros_previstos': 'Giros Previstos', 'tempo_previsto': 'Tempo Previsto'}
+        info_keys = {'col_wo': 'Nº WO', 'col_cliente': 'Cliente', 'equipment_label': 'Equipamento do Serviço', 'col_tipo_papel': 'Tipo Papel', 'col_tiragem_em_folhas': 'Tiragem Meta', 'giros_previstos': 'Giros Previstos', 'tempo_previsto': 'Tempo Previsto'}
         for i, (key, text) in enumerate(info_keys.items()):
             display_text = self.get_string(key) if self.get_string(key) != f"_{key}_" else text
             tb.Label(self.wo_info_frame, text=f"{display_text}:", font="-weight bold").grid(row=i, column=0, sticky=W, padx=PAD_X, pady=2)
@@ -277,7 +285,8 @@ class App(Toplevel):
         self.update_idletasks()
 
     def set_cursor_default(self):
-        self.config(cursor="")
+        if self.winfo_exists():
+            self.config(cursor="")
 
     def load_initial_data(self):
         self.set_cursor_watch()
@@ -304,30 +313,34 @@ class App(Toplevel):
 
     def update_wo_info_panel(self):
         if not self.selected_servico_id: return
+        print(f"DEBUG: selected_servico_id: {self.selected_servico_id}") # Added debug print
         self.set_cursor_watch()
         try:
             conn = get_db_connection()
             with conn.cursor() as cur:
                 sql = """
                     SELECT op.numero_wo, op.cliente, et.descricao as equipamento_nome,
-                           tp.descricao as tipo_papel, qc.descricao as qtde_cores,
-                           opm.tiragem_em_folhas, opm.giros_previstos, opm.tempo_producao_previsto_ms
+                           tp.descricao as tipo_papel, opm.giros_previstos,
+                           opm.tiragem_em_folhas, opm.tempo_producao_previsto_ms,
+                           qc.descricao as qtde_cores
                     FROM ordem_servicos os
                     JOIN ordem_producao op ON os.ordem_id = op.id
                     JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
                     JOIN equipamentos_tipos et ON opm.equipamento_id = et.id
-                    LEFT JOIN tipos_papel tp ON opm.tipo_papel_id = tp.id
-                    LEFT JOIN qtde_cores_tipos qc ON opm.qtde_cores_id = qc.id
+                    LEFT JOIN tipos_papel tp ON op.tipo_papel_id = tp.id
+                    LEFT JOIN qtde_cores_tipos qc ON op.qtde_cores_id = qc.id
                     WHERE os.id = %s
                 """
                 cur.execute(sql, (self.selected_servico_id,))
                 result = cur.fetchone()
+                print(f"DEBUG: Query result: {result}") # Added debug print
                 if result:
-                    wo_num, cliente, equip, papel, cores, tiragem, giros, tempo_ms = result
+                    wo_num, cliente, equip, papel, giros, tiragem, tempo_ms, cores_desc = result
+                    self.cores_desc = cores_desc
                     tempo_s = (tempo_ms / 1000.0) if tempo_ms else 0
                     info_map = {
                         'col_wo': wo_num, 'col_cliente': cliente, 'equipment_label': equip,
-                        'col_tipo_papel': papel, 'col_qtde_cores': cores, 'col_tiragem_em_folhas': tiragem,
+                        'col_tipo_papel': papel, 'col_tiragem_em_folhas': tiragem,
                         'giros_previstos': giros, 'tempo_previsto': self.format_seconds_to_hhmmss(tempo_s)
                     }
                     for key, value in info_map.items():
@@ -725,13 +738,12 @@ class App(Toplevel):
     def _calcular_giros_rodados(self, event=None):
         try:
             qtde_produzida_str = self.production_fields['quantidadeproduzida'].get()
-            cores_desc = self.info_labels.get('col_qtde_cores', tb.Label()).cget("text") 
-            if not qtde_produzida_str or not cores_desc or cores_desc == '-': return
-            
+            if not qtde_produzida_str or not hasattr(self, 'cores_desc') or not self.cores_desc or self.cores_desc == '-': return
+
             qtde_produzida = int(qtde_produzida_str)
-            multiplicador = self.giros_map.get(cores_desc, 1) 
+            multiplicador = self.giros_map.get(self.cores_desc, 1)
             giros_calculado = qtde_produzida * multiplicador
-            
+
             giros_widget = self.production_fields['giros_rodados']
             giros_widget.config(state=NORMAL)
             giros_widget.delete(0, END)

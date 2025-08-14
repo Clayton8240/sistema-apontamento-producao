@@ -8,7 +8,7 @@ import base64
 import traceback
 import logging
 
-# Configuração do logging para vermos mensagens detalhadas no terminal
+# Configuração do logging para vermos mensagens detalhadas no terminal  
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Importações dos Módulos Principais
@@ -21,12 +21,14 @@ from windows.production_app_window import App
 class AppController:
     """Controlador principal da aplicação. Não é uma janela tk.Tk."""
     def __init__(self):
+        logging.debug("AppController: __init__")
         self.root = tk.Tk()  # Cria a instância da janela raiz
        # self.root.withdraw() # Esconde a janela raiz imediatamente
         self.db_config = self.load_db_config()
         self.main_window = None
 
     def load_db_config(self):
+        logging.debug("AppController: load_db_config")
         """Carrega a config e retorna sempre um dicionário."""
         config_path = 'db_config.json'
         if not os.path.exists(config_path) or os.path.getsize(config_path) == 0:
@@ -43,12 +45,14 @@ class AppController:
             return {}
 
     def run(self):
+        logging.debug("AppController: run")
         """Inicia a aplicação, mostrando a janela de login."""
         self.show_login_window()
         # O mainloop é chamado na janela raiz, que gere toda a aplicação
         self.root.mainloop()
 
     def show_login_window(self):
+        logging.debug("AppController: show_login_window")
         """Cria e mostra a janela de login."""
         base_path = os.path.dirname(os.path.abspath(__file__))
         icon_path = os.path.join(base_path, 'icon.ico')
@@ -59,6 +63,7 @@ class AppController:
         login_win.grab_set()
 
     def on_login_success(self, db_config, permission):
+        logging.debug(f"AppController: on_login_success - permission: {permission}")
         """Chamado pela LoginWindow após um login bem-sucedido."""
         self.db_config = db_config
         
@@ -86,6 +91,7 @@ class AppController:
             self.on_app_close()
 
     def on_app_close(self):
+        logging.debug("AppController: on_app_close")
         """Fecha o pool de conexões e encerra a aplicação."""
         logging.info("Encerrando a aplicação.")
         close_connection_pool()

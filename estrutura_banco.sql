@@ -412,7 +412,8 @@ CREATE TABLE public.ordem_producao (
     tipo_papel_id integer,
     gramatura_id integer,
     formato_id integer,
-    fsc_id integer
+    fsc_id integer,
+    qtde_cores_id integer
 );
 
 

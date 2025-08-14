@@ -18,6 +18,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 import matplotlib.pyplot as plt
 import threading
 import queue
+import json
 
 # --- 1. Importações Corrigidas ---
 from database import get_db_connection, release_db_connection
@@ -56,6 +57,7 @@ class PCPWindow(tb.Toplevel):
             "gramatura_id": {"label_key": "col_gramatura", "widget": "Combobox", "lookup": "gramaturas_tipos"},
             "formato_id": {"label_key": "col_formato", "widget": "Combobox", "lookup": "formatos_tipos"},
             "fsc_id": {"label_key": "col_fsc", "widget": "Combobox", "lookup": "fsc_tipos"},
+            "qtde_cores_id": {"label_key": "col_qtde_cores", "widget": "Combobox", "lookup": "qtde_cores_tipos"},
         }
         self.machine_fields_static = {
             "equipamento_id": {"label_key": "equipment_label", "widget": "Combobox", "lookup": "equipamentos_tipos"},
@@ -272,8 +274,9 @@ class PCPWindow(tb.Toplevel):
                 # Load data for comboboxes dynamically
                 if config["lookup"] == "qtde_cores_tipos":
                     widget['values'] = list(self.cores_map.keys())
-                    if field_config['nome_campo'] == 'qtde_cores_id':
-                        widget.bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
+                    # Removed the binding here as giros calculation is now based on material details
+                    # if field_config['nome_campo'] == 'qtde_cores_id':
+                    #     widget.bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
 
     def create_widget_from_config(self, parent, config):
         if config.get("widget") == "Combobox": return tb.Combobox(parent, state="readonly")
@@ -437,6 +440,7 @@ class PCPWindow(tb.Toplevel):
                 gramatura_id = self.gramaturas_map.get(self.material_widgets["gramatura_id"].get())
                 formato_id = self.formatos_map.get(self.material_widgets["formato_id"].get())
                 fsc_id = self.fsc_map.get(self.material_widgets["fsc_id"].get())
+                qtde_cores_id = self.cores_map.get(self.material_widgets["qtde_cores_id"].get())
 
                 order_data = {
                     "numero_wo": wo_number,
@@ -446,7 +450,8 @@ class PCPWindow(tb.Toplevel):
                     "tipo_papel_id": tipo_papel_id,
                     "gramatura_id": gramatura_id,
                     "formato_id": formato_id,
-                    "fsc_id": fsc_id
+                    "fsc_id": fsc_id,
+                    "qtde_cores_id": qtde_cores_id
                 }
 
                 acabamento_ids = []
@@ -460,9 +465,9 @@ class PCPWindow(tb.Toplevel):
                 machine_list = []
                 for item in self.machines_tree.get_children():
                     item_data = self.machines_tree.item(item)
-                    (equip_nome, tiragem_str, _, _, tempo_formatado) = item_data['values']
+                    (equip_nome, tiragem_str, giros_str, cores_desc, tempo_formatado) = item_data['values']
                     dynamic_values_str = item_data['tags'][0] if item_data['tags'] else "{}"
-                    dynamic_values = eval(dynamic_values_str)
+                    dynamic_values = json.loads(dynamic_values_str)
 
                     equipamento_id = self.equipamentos_map.get(equip_nome)
                     if not equipamento_id:
@@ -476,6 +481,7 @@ class PCPWindow(tb.Toplevel):
                         "equipamento_id": equipamento_id,
                         "equipamento_nome": equip_nome,
                         "tiragem": int(tiragem_str),
+                        "giros_previstos": int(giros_str),
                         "tempo_previsto_ms": tempo_previsto_ms,
                         "dynamic_fields": dynamic_values
                     })
@@ -658,6 +664,13 @@ class PCPWindow(tb.Toplevel):
     def add_machine_to_list(self):
         equipamento = self.machine_static_widgets["equipamento_id"].get()
         tiragem_str = self.machine_static_widgets["tiragem_em_folhas"].get()
+        
+        # Get selected cores from material details
+        cores_desc = self.material_widgets["qtde_cores_id"].get()
+        if not cores_desc:
+            messagebox.showwarning("Campo Obrigatório", "Selecione a quantidade de cores nos Detalhes do Material.", parent=self)
+            return
+
         if not all([equipamento, tiragem_str]):
             messagebox.showwarning("Campo Obrigatório", "Equipamento e Tiragem são obrigatórios.", parent=self)
             return
@@ -668,13 +681,15 @@ class PCPWindow(tb.Toplevel):
             tempo_total_s = tempo_total_ms / 1000.0
             tempo_formatado = self.format_seconds_to_hhmmss(tempo_total_s)
             
+            # Calculate giros based on material details cores
+            multiplicador = self.giros_map.get(cores_desc, 1)
+            giros_calculado = tiragem * multiplicador
+
+            # Store dynamic values (if any) in the treeview item's tags for later retrieval
+            # Note: giros and cores are now derived from material details, not dynamic machine fields
             dynamic_values = {key: widget.get() for key, widget in self.machine_dynamic_widgets.items()}
             
-            giros = dynamic_values.get("giros_previstos", "")
-            cores = dynamic_values.get("qtde_cores_id", "")
-
-            # Store dynamic values in the treeview item's tags for later retrieval
-            self.machines_tree.insert("", "end", values=(equipamento, tiragem, giros, cores, tempo_formatado), tags=str(dynamic_values))
+            self.machines_tree.insert("", "end", values=(equipamento, tiragem, giros_calculado, cores_desc, tempo_formatado), tags=[json.dumps(dynamic_values)])
 
             # Clear static and dynamic fields
             for widget in self.machine_static_widgets.values():

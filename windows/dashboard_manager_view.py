@@ -12,6 +12,10 @@ from ttkbootstrap.constants import *
 from ttkbootstrap import DateEntry
 import threading
 import queue
+import logging
+
+# Configuração do logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Import para integrar Matplotlib com Tkinter
 from matplotlib.figure import Figure
@@ -26,6 +30,7 @@ class DashboardManagerView(Toplevel):
     gráficos interativos e dados detalhados da produção.
     """
     def __init__(self, master, db_config):
+        logging.debug("DashboardManagerView: __init__")
         super().__init__(master)
         self.master = master
         self.db_config = db_config
@@ -43,6 +48,7 @@ class DashboardManagerView(Toplevel):
         self.start_load_report_data()
 
     def get_db_connection(self):
+        logging.debug("DashboardManagerView: get_db_connection")
         """
         Usa a função centralizada para obter a conexão com o banco de dados.
         """
@@ -53,6 +59,7 @@ class DashboardManagerView(Toplevel):
             return None
 
     def create_widgets(self):
+        logging.debug("DashboardManagerView: create_widgets")
         """Cria a estrutura principal da interface com painéis para filtros, KPIs e gráficos."""
         main_frame = tb.Frame(self, padding=15)
         main_frame.pack(fill=BOTH, expand=YES)
@@ -82,6 +89,7 @@ class DashboardManagerView(Toplevel):
         self.create_detailed_table(table_frame)
 
     def create_filter_controls(self, parent_frame):
+        logging.debug("DashboardManagerView: create_filter_controls")
         """Cria os controles de filtro (data, cliente, máquina)."""
         tb.Label(parent_frame, text="Período: De").pack(side=LEFT, padx=(0, 5))
         self.start_date_entry = DateEntry(parent_frame, dateformat='%d/%m/%Y', bootstyle=PRIMARY)
@@ -103,6 +111,7 @@ class DashboardManagerView(Toplevel):
         self.filter_button.pack(side=LEFT, padx=10)
 
     def create_kpi_cards(self, parent_frame):
+        logging.debug("DashboardManagerView: create_kpi_cards")
         """Cria os cartões para exibir os principais indicadores."""
         kpi_specs = {
             "oee": {"title": "OEE (Eficiência Geral)", "value": "0.00%", "style": SUCCESS},
@@ -126,6 +135,7 @@ class DashboardManagerView(Toplevel):
             setattr(self, f"kpi_{key}_label", value_label)
 
     def create_chart_placeholders(self, parent_frame):
+        logging.debug("DashboardManagerView: create_chart_placeholders")
         """Cria os frames onde os gráficos serão desenhados."""
         f1 = tb.LabelFrame(parent_frame, text="Produção vs. Perdas por Máquina", bootstyle=DEFAULT, padding=5)
         f1.grid(row=0, column=0, sticky=NSEW, padx=5, pady=5)
@@ -148,6 +158,7 @@ class DashboardManagerView(Toplevel):
         self.graph_canvas['op_perf'].pack(fill=BOTH, expand=YES)
 
     def create_detailed_table(self, parent_frame):
+        logging.debug("DashboardManagerView: create_detailed_table")
         """Cria a tabela para exibir dados brutos detalhados."""
         parent_frame.grid_rowconfigure(0, weight=1)
         parent_frame.grid_columnconfigure(0, weight=1)
@@ -176,6 +187,7 @@ class DashboardManagerView(Toplevel):
         scrollbar_x.grid(row=1, column=0, sticky='ew')
 
     def load_filter_data(self):
+        logging.debug("DashboardManagerView: load_filter_data")
         """Carrega dados iniciais para os comboboxes de filtro."""
         conn = self.get_db_connection()
         if not conn: return
@@ -193,6 +205,7 @@ class DashboardManagerView(Toplevel):
                 release_db_connection(conn)
 
     def format_seconds_to_hhmmss(self, seconds):
+        logging.debug(f"DashboardManagerView: format_seconds_to_hhmmss with seconds: {seconds}")
         if pd.isna(seconds) or not isinstance(seconds, (int, float)) or seconds < 0:
             return "00:00:00"
         seconds = int(seconds)
@@ -201,6 +214,7 @@ class DashboardManagerView(Toplevel):
         return f"{hours:02}:{minutes:02}:{seconds:02}"
         
     def start_load_report_data(self):
+        logging.debug("DashboardManagerView: start_load_report_data")
         """Inicia o carregamento dos dados em uma thread separada para não bloquear a UI."""
         self.filter_button.config(state=DISABLED)
         self.config(cursor="watch")
@@ -210,6 +224,7 @@ class DashboardManagerView(Toplevel):
         self.after(100, self._check_load_report_queue)
 
     def _background_load_report(self):
+        logging.debug("DashboardManagerView: _background_load_report")
         """Esta função roda em uma thread separada para buscar e processar os dados."""
         conn = None
         try:
@@ -251,6 +266,7 @@ class DashboardManagerView(Toplevel):
                 release_db_connection(conn)
 
     def _check_load_report_queue(self):
+        logging.debug("DashboardManagerView: _check_load_report_queue")
         """Verifica a fila de dados e atualiza a UI quando os dados estiverem prontos."""
         try:
             result = self.data_queue.get_nowait()
@@ -276,6 +292,7 @@ class DashboardManagerView(Toplevel):
             self.after(100, self._check_load_report_queue)
 
     def build_sql_query(self):
+        logging.debug("DashboardManagerView: build_sql_query")
         """Constrói a consulta SQL com base nos filtros da interface, usando a VIEW."""
         query = "SELECT * FROM mv_relatorio_producao_consolidado"
         filters = []
@@ -310,6 +327,7 @@ class DashboardManagerView(Toplevel):
         return query, params
 
     def reset_dashboard(self):
+        logging.debug("DashboardManagerView: reset_dashboard")
         """Limpa todos os dados da tela."""
         self.kpi_oee_label.config(text="0.00%")
         self.kpi_total_produzido_label.config(text="0")
@@ -324,11 +342,12 @@ class DashboardManagerView(Toplevel):
                 widget.destroy()
 
     def _calculate_kpis(self, df):
+        logging.debug("DashboardManagerView: _calculate_kpis")
         """Calcula os KPIs a partir do DataFrame. Roda em background."""
         total_produzido = df['prod_qtd'].sum()
         total_perdas_setup = df['perdas_setup'].sum()
         total_perdas_prod = df['perdas_prod'].sum()
-        total_perdas = total_perdas_setup + total_perdas_prod
+        total_perdas = total_perpas_setup + total_perdas_prod
         total_paradas_s = df['tempo_parada_s'].sum()
         tempo_producao_real_s = df['tempo_prod_s'].sum()
 
@@ -351,6 +370,7 @@ class DashboardManagerView(Toplevel):
         }
 
     def _prepare_chart_data(self, df):
+        logging.debug("DashboardManagerView: _prepare_chart_data")
         """Prepara os DataFrames para cada gráfico. Roda em background."""
         machine_data = df.groupby('maquina').agg(
             prod_qtd=('prod_qtd', 'sum'),
@@ -378,6 +398,7 @@ class DashboardManagerView(Toplevel):
         }
 
     def _prepare_table_data(self, df):
+        logging.debug("DashboardManagerView: _prepare_table_data")
         """Prepara os dados formatados para a tabela. Roda em background."""
         table_rows = []
         for _, row in df.iterrows():
@@ -404,6 +425,7 @@ class DashboardManagerView(Toplevel):
         return table_rows
 
     def update_kpis(self, kpi_data):
+        logging.debug("DashboardManagerView: update_kpis")
         """Atualiza os valores nos cartões de KPI com dados pré-calculados."""
         self.kpi_oee_label.config(text=kpi_data["oee"])
         self.kpi_total_produzido_label.config(text=kpi_data["total_produzido"])
@@ -411,6 +433,7 @@ class DashboardManagerView(Toplevel):
         self.kpi_tempo_paradas_label.config(text=kpi_data["tempo_paradas"])
 
     def update_charts(self, chart_data):
+        logging.debug("DashboardManagerView: update_charts")
         """Redesenha todos os gráficos com dados pré-agregados."""
         self.draw_bar_chart(
             self.graph_canvas['machine_perf'], data=chart_data['machine_perf'], x_col='maquina',
@@ -435,6 +458,7 @@ class DashboardManagerView(Toplevel):
         )
 
     def update_detailed_table(self, table_data):
+        logging.debug("DashboardManagerView: update_detailed_table")
         """Popula a tabela de dados detalhados com dados pré-formatados."""
         for i in self.tree.get_children():
             self.tree.delete(i)
@@ -442,10 +466,12 @@ class DashboardManagerView(Toplevel):
             self.tree.insert("", "end", values=values)
     
     def _clear_canvas(self, canvas_frame):
+        logging.debug("DashboardManagerView: _clear_canvas")
         for widget in canvas_frame.winfo_children():
             widget.destroy()
 
     def draw_bar_chart(self, canvas_frame, data, x_col, y_cols, labels, title, colors):
+        logging.debug("DashboardManagerView: draw_bar_chart")
         self._clear_canvas(canvas_frame)
         if data.empty: return
         
@@ -472,6 +498,7 @@ class DashboardManagerView(Toplevel):
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     def draw_line_chart(self, canvas_frame, data, x_col, y_col, title):
+        logging.debug("DashboardManagerView: draw_line_chart")
         self._clear_canvas(canvas_frame)
         if data.empty: return
 
@@ -488,6 +515,7 @@ class DashboardManagerView(Toplevel):
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     def draw_pie_chart(self, canvas_frame, data, labels_col, values_col, title):
+        logging.debug("DashboardManagerView: draw_pie_chart")
         self._clear_canvas(canvas_frame)
         if data[values_col].sum() == 0: return
 

@@ -9,6 +9,10 @@ from psycopg2 import sql
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from tkinter import messagebox, Toplevel, END, CENTER
+import logging
+
+# Configuração do logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Importações do nosso projeto
 from config import LOOKUP_TABLE_SCHEMAS
@@ -18,6 +22,7 @@ class LookupTableManagerWindow(Toplevel):
     lookup_table_schemas = LOOKUP_TABLE_SCHEMAS
 
     def __init__(self, master, db_config, refresh_main_comboboxes_callback=None):
+        logging.debug("LookupTableManagerWindow: __init__")
         super().__init__(master)
         self.master = master
         self.db_config = db_config
@@ -35,16 +40,20 @@ class LookupTableManagerWindow(Toplevel):
         self.grab_set()
 
     def get_string(self, key, **kwargs):
+        logging.debug(f"LookupTableManagerWindow: get_string called with key: {key}")
         return self.master.get_string(key, **kwargs)
 
     def set_localized_title(self):
+        logging.debug("LookupTableManagerWindow: set_localized_title")
         self.title(self.get_string('manager_title'))
 
     def get_db_connection(self):
+        logging.debug("LookupTableManagerWindow: get_db_connection")
         # Acessa o método do master, que já está configurado para usar o pool
         return self.master.get_db_connection()
 
     def create_manager_ui(self):
+        logging.debug("LookupTableManagerWindow: create_manager_ui")
         main_frame = tb.Frame(self, padding=15)
         main_frame.pack(fill="both", expand=True)
         selection_frame = tb.LabelFrame(main_frame, text=self.get_string('manager_select_table'), bootstyle="primary", padding=10)
@@ -76,6 +85,7 @@ class LookupTableManagerWindow(Toplevel):
             self.on_table_selected()
 
     def on_table_selected(self, event=None):
+        logging.debug("LookupTableManagerWindow: on_table_selected")
         selected_display_name = self.table_selector_combobox.get()
         self.current_table = next((db_table_name for db_table_name, schema in self.lookup_table_schemas.items() if self.get_string(schema["display_name_key"]) == selected_display_name), None)
         if self.current_table:
@@ -84,6 +94,7 @@ class LookupTableManagerWindow(Toplevel):
             messagebox.showwarning(self.get_string('manager_select_table'), self.get_string('select_table_warning'), parent=self)
 
     def load_table_data(self, table_name):
+        logging.debug(f"LookupTableManagerWindow: load_table_data for table: {table_name}")
         conn = self.get_db_connection()
         if not conn: return
         schema = self.lookup_table_schemas.get(table_name)
@@ -115,6 +126,7 @@ class LookupTableManagerWindow(Toplevel):
             if conn: release_db_connection(conn)
 
     def open_add_edit_window(self, edit_mode=False):
+        logging.debug(f"LookupTableManagerWindow: open_add_edit_window, edit_mode: {edit_mode}")
         if not self.current_table:
             messagebox.showwarning(self.get_string('manager_select_table'), self.get_string('select_table_warning'), parent=self)
             return
@@ -159,6 +171,7 @@ class LookupTableManagerWindow(Toplevel):
         tb.Button(action_frame, text=self.get_string('cancel_btn'), bootstyle="secondary", command=add_edit_win.destroy).pack(side="left", padx=5)
     
     def save_entry(self, window, entries, edit_mode, pk_value=None):
+        logging.debug(f"LookupTableManagerWindow: save_entry, edit_mode: {edit_mode}, pk_value: {pk_value}")
         conn = self.get_db_connection()
         if not conn: return
         schema = self.lookup_table_schemas[self.current_table]
@@ -217,6 +230,7 @@ class LookupTableManagerWindow(Toplevel):
             if conn: release_db_connection(conn)
 
     def delete_selected_entry(self):
+        logging.debug("LookupTableManagerWindow: delete_selected_entry")
         item = self.treeview.focus()
         if not item:
             messagebox.showwarning(self.get_string('delete_selected_btn'), self.get_string('select_entry_to_delete'), parent=self)
