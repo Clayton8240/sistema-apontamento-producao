@@ -306,7 +306,7 @@ class App(Toplevel):
                 self.motivos_perda_data = {desc: mid for mid, desc in cur.fetchall()}
                 self.motivo_perda_combobox['values'] = list(self.motivos_perda_data.keys())
         except Exception as e:
-            messagebox.showwarning("Erro", f"Falha ao carregar dados iniciais: {e}", parent=self)
+            messagebox.showwarning(self.get_string('error_title_generic'), f"{self.get_string('load_initial_data_failed')}{e}", parent=self)
         finally:
             if 'conn' in locals() and conn: release_db_connection(conn)
             self.set_cursor_default()
