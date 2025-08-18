@@ -23,7 +23,7 @@ class AppController:
     def __init__(self):
         logging.debug("AppController: __init__")
         self.root = tk.Tk()  # Cria a instância da janela raiz
-       # self.root.withdraw() # Esconde a janela raiz imediatamente
+        self.root.attributes("-alpha",0) # torna a janela raiz invisível
         self.db_config = self.load_db_config()
         self.main_window = None
 
