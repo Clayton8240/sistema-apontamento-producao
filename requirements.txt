@@ -1,0 +1,9 @@
+keyring
+matplotlib
+openpyxl
+pandas
+Pillow
+psycopg2_binary
+bcrypt
+reportlab
+ttkbootstrap
