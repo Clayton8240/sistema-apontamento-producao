@@ -1,7 +1,0 @@
-feat: Refatora cálculo de giros e implementa logging
-
-Refatora a lógica de cálculo de giros para impressoras offset, garantindo que os valores previstos e reais sejam corretamente armazenados e exibidos.
-
-- Adiciona as colunas qtde_cores_id e giros_previstos ao esquema do banco de dados.
-- Implementa o módulo de logging em toda a aplicação para melhorar a capacidade de depuração.
-- Corrige múltiplos bugs, incluindo erros de TypeError e TclError, e melhora a segurança ao substituir eval() por json.loads().
