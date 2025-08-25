@@ -16,10 +16,10 @@ from .equipment_manager_window import EquipmentManagerWindow # <-- NOVA IMPORTAÃ
 from database import get_db_connection, release_db_connection
 
 class MenuPrincipalWindow(tb.Toplevel):
-    def __init__(self, master, db_config):
+    def __init__(self, master, app_controller, db_config):
         super().__init__(master)
+        self.app_controller = app_controller
         self.db_config = db_config
-        self.master = master
         self.current_language = self.db_config.get('language', 'portugues')
         self.set_localized_title()
         self.geometry("600x450")
@@ -59,7 +59,7 @@ class MenuPrincipalWindow(tb.Toplevel):
     def create_menu(self):
         self.menubar = tb.Menu(self)
         config_menu = tb.Menu(self.menubar, tearoff=0)
-        config_menu.add_command(label=self.get_string('menu_db_config'), command=lambda: self.master.open_configure_db_window(self))
+        config_menu.add_command(label=self.get_string('menu_db_config'), command=lambda: self.app_controller.open_configure_db_window(self))
         config_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self, self.db_config, self.refresh_main_pcp_comboboxes))
         config_menu.add_command(label=self.get_string('menu_manage_equipment'), command=self.open_equipment_manager)
         

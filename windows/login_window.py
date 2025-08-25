@@ -133,94 +133,11 @@ class LoginWindow(tb.Toplevel):
         btn_frame = tb.Frame(main_frame)
         btn_frame.pack(fill=X, padx=20)
         tb.Button(btn_frame, text="Entrar", bootstyle=SUCCESS, command=self.handle_login).pack(side='left', expand=YES, fill=X, ipady=5)
-        tb.Button(btn_frame, text="Configurar DB", bootstyle="secondary-outline", command=lambda: self.open_configure_db_window(self)).pack(side='left', padx=(10,0))
+        tb.Button(btn_frame, text="Configurar DB", bootstyle="secondary-outline", command=lambda: self.app_controller.open_configure_db_window(self)).pack(side='left', padx=(10,0))
         
-    def open_configure_db_window(self, parent):
-        win = Toplevel(parent)
-        win.title(self.get_string('config_win_title'))
-        win.transient(parent)
-        win.grab_set()
-        
-        frame = tb.Frame(win, padding=10)
-        frame.pack(expand=True, fill=BOTH)
-        
-        labels = [("host", 'host_label'), ("porta", 'port_label'), ("usuário", 'user_label'), ("senha", 'password_label'), ("banco", 'db_label')]
-        entries = {}
-        
-        # *** ALTERAÇÃO AQUI: Recupera a senha do keyring para exibir (se existir) ***
-        db_user = self.db_config.get('usuário', '')
-        saved_password = keyring.get_password(KEYRING_SERVICE_NAME, db_user) if db_user else ''
+    
 
-        for i, (key, label_key) in enumerate(labels):
-            tb.Label(frame, text=self.get_string(label_key) + ":").grid(row=i, column=0, padx=5, pady=5, sticky="w")
-            e = tb.Entry(frame, show='*' if key == "senha" else '')
-            e.grid(row=i, column=1, padx=5, pady=5, sticky="ew")
-            
-            # Preenche o campo de senha com o valor do keyring
-            if key == "senha":
-                if saved_password:
-                    e.insert(0, saved_password)
-            else:
-                e.insert(0, self.db_config.get(key, ''))
-            
-            entries[key] = e
-        
-        tb.Label(frame, text=self.get_string('language_label') + ":").grid(row=len(labels), column=0, padx=5, pady=5, sticky="w")
-        lang_opts = [lang.capitalize() for lang in LANGUAGES.keys()]
-        lang_selector = tb.Combobox(frame, values=lang_opts, state="readonly")
-        lang_selector.grid(row=len(labels), column=1, padx=5, pady=5, sticky="ew")
-        lang_selector.set(self.current_language.capitalize())
-
-        frame.columnconfigure(1, weight=1)
-        
-        btn_frame = tb.Frame(frame)
-        btn_frame.grid(row=len(labels) + 1, columnspan=2, pady=15)
-        tb.Button(btn_frame, text=self.get_string('test_connection_btn'), bootstyle="info-outline", command=lambda: self.run_connection_test(entries, win)).pack(side="left", padx=5)
-        tb.Button(btn_frame, text=self.get_string('save_btn'), bootstyle="success", command=lambda: self.save_and_close_config(entries, lang_selector, win)).pack(side="left", padx=5)
-
-    def save_and_close_config(self, entries, lang_selector, win):
-        new_config = {}
-        password_to_save = None
-        db_user_to_save = None
-
-        # Separa a senha dos outros dados de configuração
-        for key, widget in entries.items():
-            if key == "senha":
-                password_to_save = widget.get()
-            else:
-                new_config[key] = widget.get()
-                if key == "usuário":
-                    db_user_to_save = widget.get()
-
-        new_config['tabela'] = self.db_config.get('tabela', 'apontamento')
-        new_lang = lang_selector.get().lower()
-        new_config['language'] = new_lang
-        
-        try:
-            # *** ALTERAÇÃO AQUI: Salva a senha no keyring e o resto no JSON ***
-            if db_user_to_save and password_to_save:
-                keyring.set_password(KEYRING_SERVICE_NAME, db_user_to_save, password_to_save)
-            elif db_user_to_save: # Se a senha for apagada, remove do keyring
-                try:
-                    keyring.delete_password(KEYRING_SERVICE_NAME, db_user_to_save)
-                except keyring.errors.PasswordDeleteError:
-                    pass # Ignora o erro se a senha não existir para ser deletada
-
-            # Salva o resto da configuração (sem a senha) no arquivo
-            config_json = json.dumps(new_config, indent=4)
-            encoded_data = base64.b64encode(config_json.encode('utf-8'))
-            with open('db_config.json', 'wb') as f:
-                f.write(encoded_data)
-                
-            self.db_config = new_config
-            self.app_controller.db_config = new_config
-            self.current_language = new_lang
-            messagebox.showinfo(self.get_string('save_btn'), self.get_string('config_save_success'), parent=win)
-        except Exception as e:
-            messagebox.showerror(self.get_string('save_btn'), self.get_string('config_save_error', error=e), parent=win)
-        
-        win.destroy()
-        self.create_login_widgets()
+    
 
     def run_connection_test(self, entries, parent_win):
         test_config = {k: v.get() for k, v in entries.items()}

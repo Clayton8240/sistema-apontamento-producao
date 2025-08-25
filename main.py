@@ -18,6 +18,7 @@ from windows.login_window import LoginWindow
 from windows.main_menu_window import MenuPrincipalWindow
 from windows.pcp_window import PCPWindow
 from windows.production_app_window import App
+from windows.configure_db_window import ConfigureDBWindow
 
 class AppController:
     """Controlador principal da aplicação. Não é uma janela tk.Tk."""
@@ -77,7 +78,7 @@ class AppController:
             initialize_connection_pool(self.db_config)
             
             if permission == 'admin':
-                self.main_window = MenuPrincipalWindow(self.root, self.db_config)
+                self.main_window = MenuPrincipalWindow(self.root, self, self.db_config)
             elif permission == 'pcp':
                 self.main_window = PCPWindow(self.root, self.db_config)
             elif permission == 'offset':
@@ -91,12 +92,18 @@ class AppController:
             messagebox.showerror("Erro de Inicialização", f"Não foi possível iniciar a aplicação principal:\n{e}")
             self.on_app_close()
 
+    def open_configure_db_window(self, parent):
+        """Abre a janela de configuração do banco de dados."""
+        config_win = ConfigureDBWindow(parent, self)
+        config_win.grab_set()
+
     def on_app_close(self):
         logging.debug("AppController: on_app_close")
         """Fecha o pool de conexões e encerra a aplicação."""
         logging.info("Encerrando a aplicação.")
         close_connection_pool()
         self.root.destroy()
+
 
 if __name__ == "__main__":
     try:
