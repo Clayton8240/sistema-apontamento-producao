@@ -149,7 +149,8 @@ LANGUAGES = {
         'col_operator': 'Operador',
         'col_prod_start': 'Início Prod.',
         'col_prod_end': 'Fim Prod.',
-        'col_perdas': 'Perdas (Setup)',
+        'col_perdas': 'Folhas Brancas utilizadas no Setup',
+        'col_malas': 'Reaproveitamento de papeis no setup',
 
 
         # Menus
@@ -428,7 +429,8 @@ LANGUAGES = {
         'col_operator': 'Operator',
         'col_prod_start': 'Prod. Start',
         'col_prod_end': 'Prod. End',
-        'col_perdas': 'Waste (Setup)',
+        'col_perdas': 'White papers used in Setup',
+        'col_malas': 'Reusing paper in the setup',
 
         # Menus
         'menu_settings': 'Settings',
