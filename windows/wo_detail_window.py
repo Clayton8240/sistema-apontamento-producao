@@ -71,8 +71,8 @@ class WODetailWindow(Toplevel):
                         FROM ordem_servicos os
                         JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
                         JOIN ordem_producao op ON os.ordem_id = op.id
-                        LEFT JOIN tipos_papel tp ON opm.tipo_papel_id = tp.id
-                        LEFT JOIN qtde_cores_tipos qc ON opm.qtde_cores_id = qc.id
+                        LEFT JOIN tipos_papel tp ON op.tipo_papel_id = tp.id
+                        LEFT JOIN qtde_cores_tipos qc ON op.qtde_cores_id = qc.id
                         LEFT JOIN apontamento ap ON ap.servico_id = os.id
                         LEFT JOIN impressores imp ON ap.impressor_id = imp.id
                         WHERE os.ordem_id = %s

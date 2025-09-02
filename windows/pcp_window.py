@@ -291,6 +291,12 @@ class PCPWindow(tb.Toplevel):
                 cur.execute('SELECT descricao, giros FROM qtde_cores_tipos')
                 self.giros_map = {desc: giros if giros is not None else 1 for desc, giros in cur.fetchall()}
 
+                # Carrega o mapa de velocidade dos equipamentos
+                cur.execute('SELECT descricao, tempo_por_folha_ms FROM equipamentos_tipos')
+                self.equipment_speed_map.clear()
+                for desc, speed_ms in cur.fetchall():
+                    self.equipment_speed_map[desc] = speed_ms if speed_ms and speed_ms > 0 else 1
+
                 schemas = LOOKUP_TABLE_SCHEMAS
 
                 lookup_to_map = {

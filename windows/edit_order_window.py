@@ -23,8 +23,8 @@ class EditOrdemWindow(Toplevel):
         
         # Dicionários de configuração copiados da janela pai para consistência
         self.fields_config = self.master.fields_config
-        self.machine_fields_left = self.master.machine_fields_left
-        self.machine_fields_right = self.master.machine_fields_right
+        self.machine_fields_left = self.master.material_fields
+        self.machine_fields_right = self.master.machine_fields_static
         self.giros_map = self.master.giros_map
         self.equipment_speed_map = self.master.equipment_speed_map
         
@@ -140,34 +140,64 @@ class EditOrdemWindow(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT numero_wo, pn_partnumber, cliente, data_previsao_entrega FROM ordem_producao WHERE id = %s", (self.ordem_id,))
-                wo_data = cur.fetchone()
-                if not wo_data:
-                    self.destroy()
-                    return
-                
-                self.title(f"Editar Ordem de Produção - WO: {wo_data[0]}")
-                self.widgets['numero_wo'].insert(0, wo_data[0] or '')
-                self.widgets['pn_partnumber'].insert(0, wo_data[1] or '')
-                self.widgets['cliente'].insert(0, wo_data[2] or '')
-                if wo_data[3]:
-                    self.widgets['data_previsao_entrega'].entry.insert(0, wo_data[3].strftime('%d/%m/%Y'))
-
+                # Query to get order details including material descriptions
                 cur.execute("""
-                    SELECT et.descricao, opm.tiragem_em_folhas, opm.giros_previstos, qc.descricao, tp.descricao, g.valor, opm.tempo_producao_previsto_ms
-                    FROM ordem_producao_maquinas opm
-                    LEFT JOIN equipamentos_tipos et ON opm.equipamento_id = et.id
-                    LEFT JOIN qtde_cores_tipos qc ON opm.qtde_cores_id = qc.id
-                    LEFT JOIN tipos_papel tp ON opm.tipo_papel_id = tp.id
-                    LEFT JOIN gramaturas_tipos g ON opm.gramatura_id = g.id
-                    WHERE opm.ordem_id = %s ORDER BY opm.sequencia_producao;
+                    SELECT 
+                        op.numero_wo, op.pn_partnumber, op.cliente, op.data_previsao_entrega,
+                        qc.descricao as cores, 
+                        tp.descricao as papel, 
+                        g.valor as gramatura
+                    FROM ordem_producao op
+                    LEFT JOIN qtde_cores_tipos qc ON op.qtde_cores_id = qc.id
+                    LEFT JOIN tipos_papel tp ON op.tipo_papel_id = tp.id
+                    LEFT JOIN gramaturas_tipos g ON op.gramatura_id = g.id
+                    WHERE op.id = %s
                 """, (self.ordem_id,))
                 
-                for equip, tiragem, giros, cores, papel, gramatura, tempo_ms in cur.fetchall():
+                order_data = cur.fetchone()
+                if not order_data:
+                    messagebox.showerror("Erro", "Ordem de produção não encontrada.", parent=self)
+                    self.destroy()
+                    return
+
+                (wo_num, pn, cliente, previsao, cores_desc, papel_desc, gramatura_valor) = order_data
+                
+                self.title(f"Editar Ordem de Produção - WO: {wo_num}")
+                self.widgets['numero_wo'].insert(0, wo_num or '')
+                self.widgets['pn_partnumber'].insert(0, pn or '')
+                self.widgets['cliente'].insert(0, cliente or '')
+                if previsao:
+                    self.widgets['data_previsao_entrega'].entry.insert(0, previsao.strftime('%d/%m/%Y'))
+
+                # Now, load the machine list for the order
+                cur.execute("""
+                    SELECT 
+                        et.descricao, 
+                        opm.tiragem_em_folhas, 
+                        opm.giros_previstos, 
+                        opm.tempo_producao_previsto_ms
+                    FROM ordem_producao_maquinas opm
+                    LEFT JOIN equipamentos_tipos et ON opm.equipamento_id = et.id
+                    WHERE opm.ordem_id = %s 
+                    ORDER BY opm.sequencia_producao;
+                """, (self.ordem_id,))
+                
+                for equip, tiragem, giros, tempo_ms in cur.fetchall():
                     tempo_s = (tempo_ms / 1000.0) if tempo_ms else 0.0
                     tempo_formatado = self.format_seconds_to_hhmmss(tempo_s)
-                    values = (equip or '', tiragem or '', giros or '', cores or '', papel or '', gramatura or '', tempo_formatado)
+                    
+                    # Use the material data from the main order for all machines
+                    values = (
+                        equip or '', 
+                        tiragem or '', 
+                        giros or '', 
+                        cores_desc or '', 
+                        papel_desc or '', 
+                        gramatura_valor or '', 
+                        tempo_formatado
+                    )
                     self.machines_tree.insert("", "end", values=values)
+
         except Exception as e:
             messagebox.showerror("Erro ao Carregar", f"Falha ao carregar dados da ordem: {e}", parent=self)
         finally:
@@ -178,51 +208,69 @@ class EditOrdemWindow(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
-                # 1. Atualizar dados gerais da ordem_producao
+                # 1. Get material IDs from widgets
+                # These widgets are now in self.machine_widgets, based on the fix from the previous step
+                
+                # Helper to get ID from description/value
+                def get_id_from_value(table, column, value):
+                    if not value:
+                        return None
+                    cur.execute(f"SELECT id FROM {table} WHERE {column} = %s", (value,))
+                    result = cur.fetchone()
+                    return result[0] if result else None
+
+                tipo_papel_id = get_id_from_value("tipos_papel", "descricao", self.machine_widgets["tipo_papel_id"].get())
+                gramatura_id = get_id_from_value("gramaturas_tipos", "valor", self.machine_widgets["gramatura_id"].get())
+                formato_id = get_id_from_value("formatos_tipos", "descricao", self.machine_widgets.get("formato_id").get() if self.machine_widgets.get("formato_id") else None) # formato is not in the old edit window, need to check
+                fsc_id = get_id_from_value("fsc_tipos", "descricao", self.machine_widgets.get("fsc_id").get() if self.machine_widgets.get("fsc_id") else None) # fsc is not in the old edit window
+                qtde_cores_id = get_id_from_value("qtde_cores_tipos", "descricao", self.machine_widgets["qtde_cores_id"].get())
+
+                # 2. Update ordem_producao with general and material data
                 data_previsao_str = self.widgets['data_previsao_entrega'].entry.get()
                 data_previsao = datetime.strptime(data_previsao_str, '%d/%m/%Y').date() if data_previsao_str else None
+                
                 cur.execute("""
-                    UPDATE ordem_producao SET numero_wo = %s, pn_partnumber = %s, cliente = %s, data_previsao_entrega = %s
+                    UPDATE ordem_producao 
+                    SET numero_wo = %s, pn_partnumber = %s, cliente = %s, data_previsao_entrega = %s,
+                        tipo_papel_id = %s, gramatura_id = %s, formato_id = %s, fsc_id = %s, qtde_cores_id = %s
                     WHERE id = %s
                 """, (
                     self.widgets['numero_wo'].get(),
                     self.widgets['pn_partnumber'].get(),
                     self.widgets['cliente'].get(),
                     data_previsao,
+                    tipo_papel_id,
+                    gramatura_id,
+                    formato_id,
+                    fsc_id,
+                    qtde_cores_id,
                     self.ordem_id
                 ))
                 
-                # 2. Apagar serviços e máquinas antigas para recriá-los
+                # 3. Apagar serviços e máquinas antigas para recriá-los
                 cur.execute("DELETE FROM ordem_servicos WHERE ordem_id = %s", (self.ordem_id,))
                 cur.execute("DELETE FROM ordem_producao_maquinas WHERE ordem_id = %s", (self.ordem_id,))
                 
-                # 3. Inserir as novas máquinas e serviços da lista
+                # 4. Inserir as novas máquinas e serviços da lista
                 sequencia_servico = 1
                 for item in self.machines_tree.get_children():
-                    (equip_nome, tiragem_str, giros_str, cores_nome, papel_nome, gramatura_valor, _) = self.machines_tree.item(item, 'values')
+                    (equip_nome, tiragem_str, giros_str, _, _, _, _) = self.machines_tree.item(item, 'values')
                     
-                    # Busca de IDs
-                    # (Esta parte é idêntica à da função save_new_ordem)
-                    cur.execute("SELECT id FROM equipamentos_tipos WHERE descricao = %s", (equip_nome,))
-                    equipamento_id = cur.fetchone()[0]
-                    cur.execute("SELECT id FROM qtde_cores_tipos WHERE descricao = %s", (cores_nome,))
-                    qtde_cores_id = cur.fetchone()[0] if cores_nome and cur.rowcount > 0 else None
-                    cur.execute("SELECT id FROM tipos_papel WHERE descricao = %s", (papel_nome,))
-                    tipo_papel_id = cur.fetchone()[0] if papel_nome and cur.rowcount > 0 else None
-                    cur.execute("SELECT id FROM gramaturas_tipos WHERE valor = %s", (gramatura_valor,))
-                    gramatura_id = cur.fetchone()[0] if gramatura_valor and cur.rowcount > 0 else None
+                    equipamento_id = get_id_from_value("equipamentos_tipos", "descricao", equip_nome)
+                    if not equipamento_id:
+                        raise ValueError(f"Equipamento '{equip_nome}' não encontrado.")
 
                     tiragem_int = int(tiragem_str)
                     giros_int = int(giros_str)
                     tempo_previsto_ms = tiragem_int * self.equipment_speed_map.get(equip_nome, 1)
 
-                    # Inserir máquina
+                    # Inserir máquina (without material fields)
                     cur.execute(
                         """
-                        INSERT INTO ordem_producao_maquinas (ordem_id, equipamento_id, tiragem_em_folhas, giros_previstos, tempo_producao_previsto_ms, qtde_cores_id, tipo_papel_id, gramatura_id, sequencia_producao)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id;
+                        INSERT INTO ordem_producao_maquinas (ordem_id, equipamento_id, tiragem_em_folhas, giros_previstos, tempo_producao_previsto_ms, sequencia_producao)
+                        VALUES (%s, %s, %s, %s, %s, %s) RETURNING id;
                         """,
-                        (self.ordem_id, equipamento_id, tiragem_int, giros_int, tempo_previsto_ms, qtde_cores_id, tipo_papel_id, gramatura_id, sequencia_servico)
+                        (self.ordem_id, equipamento_id, tiragem_int, giros_int, tempo_previsto_ms, sequencia_servico)
                     )
                     maquina_id = cur.fetchone()[0]
 
@@ -239,7 +287,7 @@ class EditOrdemWindow(Toplevel):
             self.destroy()
         except Exception as e:
             if conn: conn.rollback()
-            messagebox.showerror("Erro ao Salvar", self.get_string('update_order_failed', error=e), parent=self)
+            messagebox.showerror("Erro ao Salvar", f"Falha ao salvar alterações: {e}", parent=self)
         finally:
             if conn: conn.close()
 

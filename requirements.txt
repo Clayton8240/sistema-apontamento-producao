@@ -7,3 +7,4 @@ psycopg2_binary
 bcrypt
 reportlab
 ttkbootstrap
+pyinstaller

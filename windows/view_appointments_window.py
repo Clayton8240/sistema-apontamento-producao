@@ -43,6 +43,7 @@ class ViewAppointmentsWindow(Toplevel):
 
         kpi_defs = {
             "qtd_produzida": "Qtd. Total Produzida",
+            "giros_rodados": "Giros Rodados",
             "tempo_producao": "Tempo Total de Produção",
             "tempo_parada": "Tempo Total de Parada",
             "total_perdas": "Total de Perdas (Prod.)"
@@ -96,11 +97,11 @@ class ViewAppointmentsWindow(Toplevel):
 
         self.cols_hist = (
             "apontamento_id", "wo", "cliente", "servico_desc", "servico_status", "data_apont", 
-            "horainicio", "horafim", "impressor", "equipamento", "qtd_produzida", "perdas_producao"
+            "horainicio", "horafim", "impressor", "equipamento", "giros_rodados", "qtd_produzida", "perdas_producao"
         )
         self.headers_hist = [
             "ID Apont.", "WO", "Cliente", "Serviço", "Status Serviço", "Data", 
-            "Início Prod.", "Fim Prod.", "Impressor", "Equipamento", "Qtd. Produzida", "Perdas"
+            "Início Prod.", "Fim Prod.", "Impressor", "Equipamento", "Giros Rodados", "Qtd. Produzida", "Perdas"
         ]
         
         self.tree_hist = tb.Treeview(tree_frame_hist, columns=self.cols_hist, show="headings", bootstyle=PRIMARY)
@@ -157,7 +158,7 @@ class ViewAppointmentsWindow(Toplevel):
                     SELECT
                         ap.id, op.numero_wo, op.cliente, os.descricao, os.status, ap.data,
                         ap.horainicio, ap.horafim, imp.nome, et.descricao,
-                        ap.quantidadeproduzida, ap.perdas_producao
+                        ap.giros_rodados, ap.quantidadeproduzida, ap.perdas_producao
                     FROM apontamento AS ap
                     LEFT JOIN ordem_servicos AS os ON ap.servico_id = os.id
                     LEFT JOIN ordem_producao AS op ON os.ordem_id = op.id
@@ -188,7 +189,7 @@ class ViewAppointmentsWindow(Toplevel):
                     processed_row = [item if item is not None else "" for item in row]
                     self.tree_hist.insert("", END, values=tuple(processed_row))
                
-            self.calculate_and_display_kpis()
+                self.calculate_and_display_kpis()
 
         except (psycopg2.Error, ValueError) as e:
             messagebox.showerror("Erro ao Carregar Histórico", f"Falha ao carregar relatório: {e}", parent=self)
@@ -261,6 +262,7 @@ class ViewAppointmentsWindow(Toplevel):
         
     def calculate_and_display_kpis(self):
         total_produzido = 0
+        total_giros = 0
         total_perdas = 0
         total_producao_delta = timedelta()
 
@@ -269,9 +271,12 @@ class ViewAppointmentsWindow(Toplevel):
             idx_inicio = self.cols_hist.index('horainicio')
             idx_fim = self.cols_hist.index('horafim')
             idx_qtd = self.cols_hist.index('qtd_produzida')
+            idx_giros = self.cols_hist.index('giros_rodados')
             idx_perdas = self.cols_hist.index('perdas_producao')
 
             try: total_produzido += int(values[idx_qtd])
+            except (ValueError, IndexError): pass
+            try: total_giros += int(values[idx_giros])
             except (ValueError, IndexError): pass
             try: total_perdas += int(values[idx_perdas])
             except (ValueError, IndexError): pass
@@ -293,6 +298,7 @@ class ViewAppointmentsWindow(Toplevel):
         m_parada, s_parada = divmod(rem_parada, 60)
 
         self.kpi_labels["qtd_produzida"].config(text=f"{total_produzido:,}".replace(",", "."))
+        self.kpi_labels["giros_rodados"].config(text=f"{total_giros:,}".replace(",", "."))
         self.kpi_labels["total_perdas"].config(text=f"{total_perdas:,}".replace(",", "."))
         self.kpi_labels["tempo_producao"].config(text=f"{h_prod:02d}:{m_prod:02d}:{s_prod:02d}")
         self.kpi_labels["tempo_parada"].config(text=f"{h_parada:02d}:{m_parada:02d}:{s_parada:02d}")

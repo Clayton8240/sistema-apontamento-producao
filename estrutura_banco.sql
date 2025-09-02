@@ -1516,3 +1516,53 @@ GRANT ALL ON SCHEMA public TO PUBLIC;
 -- PostgreSQL database dump complete
 --
 
+CREATE OR REPLACE VIEW mv_relatorio_producao_consolidado AS
+SELECT
+    op.data_cadastro_pcp AS data_ordem,
+    op.numero_wo,
+    op.cliente,
+    os.descricao AS servico,
+    et.descricao AS maquina,
+    imp.nome AS operador,
+    opm.tiragem_em_folhas AS meta_qtd,
+    ap.quantidadeproduzida AS prod_qtd,
+    COALESCE(aps.perdas, 0) AS perdas_setup,
+    COALESCE(ap.perdas_producao, 0) AS perdas_prod,
+    EXTRACT(EPOCH FROM (aps.hora_fim - aps.hora_inicio)) AS tempo_setup_s,
+    EXTRACT(EPOCH FROM (ap.horafim - ap.horainicio)) AS tempo_prod_s,
+    COALESCE(SUM(EXTRACT(EPOCH FROM (p.hora_fim_parada - p.hora_inicio_parada))), 0) AS tempo_parada_s,
+    (et.tempo_por_folha_ms / 1000.0) AS tempo_ciclo_ideal_s
+FROM
+    ordem_producao op
+JOIN
+    ordem_servicos os ON op.id = os.ordem_id
+LEFT JOIN
+    ordem_producao_maquinas opm ON os.maquina_id = opm.id
+LEFT JOIN
+    equipamentos_tipos et ON opm.equipamento_id = et.id
+LEFT JOIN
+    apontamento ap ON os.id = ap.servico_id
+LEFT JOIN
+    apontamento_setup aps ON os.id = aps.servico_id
+LEFT JOIN
+    impressores imp ON ap.impressor_id = imp.id
+LEFT JOIN
+    paradas p ON ap.id = p.apontamento_id
+GROUP BY
+    op.data_cadastro_pcp,
+    op.numero_wo,
+    op.cliente,
+    os.descricao,
+    et.descricao,
+    imp.nome,
+    opm.tiragem_em_folhas,
+    ap.quantidadeproduzida,
+    aps.perdas,
+    ap.perdas_producao,
+    aps.hora_fim,
+    aps.hora_inicio,
+    ap.horafim,
+    ap.horainicio,
+    et.tempo_por_folha_ms
+ORDER BY
+    op.data_cadastro_pcp DESC, op.numero_wo;
