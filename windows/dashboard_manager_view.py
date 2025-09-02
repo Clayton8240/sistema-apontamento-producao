@@ -43,6 +43,7 @@ class DashboardManagerView(Toplevel):
         self.graph_canvas = {}
         self.data_queue = queue.Queue()
         self.df = pd.DataFrame() # Dataframe para armazenar os dados carregados
+        self.generic_filter_entries = {}
 
         self.create_widgets()
         self.load_filter_data()
@@ -134,14 +135,52 @@ class DashboardManagerView(Toplevel):
         for widget in self.dynamic_filters_frame.winfo_children():
             widget.destroy()
 
+        self.generic_filter_entries = {} # Reseta os filtros
+
         source = self.data_source_combobox.get()
         if source == 'Relatório de Produção':
             self.create_report_filters(self.dynamic_filters_frame)
             self.load_report_filter_data()
-        else:
-            tb.Label(self.dynamic_filters_frame, text="Filtro (coluna=valor):").pack(side=LEFT, padx=(0, 5))
-            self.generic_filter_entry = tb.Entry(self.dynamic_filters_frame, width=50)
-            self.generic_filter_entry.pack(side=LEFT, fill=X, expand=YES)
+        elif source: # Se qualquer outra tabela for selecionada
+            self.create_generic_filters(self.dynamic_filters_frame, source)
+
+    def create_generic_filters(self, parent_frame, table_name):
+        """Cria filtros genéricos (Label + Entry) para cada coluna da tabela."""
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT column_name 
+                    FROM information_schema.columns 
+                    WHERE table_schema = 'public' AND table_name = %s 
+                    ORDER BY ordinal_position;
+                """, (table_name,))
+                columns = [row[0] for row in cur.fetchall()]
+                
+                # Creating a four-column layout for filters
+                frame = tb.Frame(parent_frame)
+                frame.pack(fill=X, expand=YES)
+                
+                num_filter_cols = 4
+                for i, col_name in enumerate(columns):
+                    row = i // num_filter_cols
+                    col = (i % num_filter_cols) * 2
+                    
+                    tb.Label(frame, text=f"{col_name}:").grid(row=row, column=col, padx=(0, 5), pady=2, sticky='w')
+                    entry = tb.Entry(frame, width=20)
+                    entry.grid(row=row, column=col + 1, padx=(0, 15), pady=2, sticky='we')
+                    self.generic_filter_entries[col_name] = entry
+                
+                # Configure grid weights
+                for i in range(num_filter_cols * 2):
+                    frame.grid_columnconfigure(i, weight=1 if i % 2 != 0 else 0)
+
+        except Exception as e:
+            messagebox.showerror("Erro ao Criar Filtros", f"Não foi possível buscar as colunas da tabela: {e}", parent=self)
+        finally:
+            if conn:
+                release_db_connection(conn)
 
     def create_report_filters(self, parent_frame):
         """Cria os filtros específicos para o Relatório de Produção."""
@@ -507,14 +546,17 @@ class DashboardManagerView(Toplevel):
                 query += " WHERE " + " AND ".join(filters)
             query += " ORDER BY op.data_cadastro_pcp DESC, op.numero_wo"
         else:
-            query = f'SELECT * FROM public.\"{source}\"' # Note the escaped quotes for the table name
-            if hasattr(self, 'generic_filter_entry') and self.generic_filter_entry.get():
-                try:
-                    col, val = self.generic_filter_entry.get().split('=', 1)
-                    query += f' WHERE \"{col.strip()}\" ILIKE %s' # Note the escaped quotes for the column name
-                    params.append(f"%{val.strip()}%")
-                except ValueError:
-                    messagebox.showwarning("Filtro Inválido", "Use o formato 'coluna=valor' para filtrar.", parent=self)
+            query = f'SELECT * FROM public."{source}"'
+            filters = []
+            for col_name, entry_widget in self.generic_filter_entries.items():
+                value = entry_widget.get()
+                if value:
+                    # Cast to text to allow ILIKE on any data type
+                    filters.append(f'"{col_name}"::text ILIKE %s')
+                    params.append(f"%{value}%")
+            
+            if filters:
+                query += " WHERE " + " AND ".join(filters)
 
         return query, params
 
