@@ -46,7 +46,7 @@ class DashboardManagerView(Toplevel):
 
         self.create_widgets()
         self.load_filter_data()
-        self.start_load_report_data()
+        # self.start_load_report_data() # A carga inicial é feita ao selecionar a fonte
 
     def get_db_connection(self):
         logging.debug("DashboardManagerView: get_db_connection")
@@ -71,28 +71,80 @@ class DashboardManagerView(Toplevel):
         filters_frame.grid(row=0, column=0, columnspan=2, sticky=NSEW, padx=5, pady=5)
         self.create_filter_controls(filters_frame)
 
-        kpi_frame = tb.LabelFrame(main_frame, text="Indicadores Chave de Desempenho (KPIs)", bootstyle=INFO, padding=15)
-        kpi_frame.grid(row=1, column=0, columnspan=2, sticky=NSEW, padx=5, pady=10)
-        self.create_kpi_cards(kpi_frame)
+        self.kpi_frame = tb.LabelFrame(main_frame, text="Indicadores Chave de Desempenho (KPIs)", bootstyle=INFO, padding=15)
+        self.kpi_frame.grid(row=1, column=0, columnspan=2, sticky=NSEW, padx=5, pady=10)
+        self.create_kpi_cards(self.kpi_frame)
         
-        notebook = tb.Notebook(main_frame, bootstyle="primary")
-        notebook.grid(row=2, column=0, columnspan=2, sticky=NSEW, padx=5, pady=5)
+        self.notebook = tb.Notebook(main_frame, bootstyle="primary")
+        self.notebook.grid(row=2, column=0, columnspan=2, sticky=NSEW, padx=5, pady=5)
 
-        charts_frame = tb.Frame(notebook, padding=10)
+        charts_frame = tb.Frame(self.notebook, padding=10)
         charts_frame.grid_columnconfigure((0, 1), weight=1)
         charts_frame.grid_rowconfigure((0, 1), weight=1)
-        notebook.add(charts_frame, text=" Análise Gráfica ")
+        self.notebook.add(charts_frame, text=" Análise Gráfica ")
         
         self.create_chart_placeholders(charts_frame)
 
-        table_frame = tb.Frame(notebook, padding=10)
-        notebook.add(table_frame, text=" Dados Detalhados ")
-        self.create_detailed_table(table_frame)
+        self.table_tab_frame = tb.Frame(self.notebook, padding=10)
+        self.notebook.add(self.table_tab_frame, text=" Dados Detalhados ")
+        # A tabela agora é criada dinamicamente
 
     def create_filter_controls(self, parent_frame):
         logging.debug("DashboardManagerView: create_filter_controls")
-        """Cria os controles de filtro em duas linhas para melhor organização."""
-        # Linha 1 de Filtros
+        """Cria os controles de filtro, agora com um seletor de fonte de dados."""
+        # --- Linha 0: Seletor da Fonte de Dados ---
+        source_frame = tb.Frame(parent_frame)
+        source_frame.pack(fill=X, expand=YES, pady=(0, 10))
+        tb.Label(source_frame, text="Fonte de Dados:", font=("Helvetica", 10, "bold")).pack(side=LEFT, padx=(0, 5))
+        self.data_source_combobox = tb.Combobox(source_frame, state="readonly", bootstyle=PRIMARY)
+        self.data_source_combobox.pack(side=LEFT, fill=X, expand=YES)
+        self.data_source_combobox.bind("<<ComboboxSelected>>", self.on_data_source_changed)
+
+        # --- Container para filtros dinâmicos ---
+        self.dynamic_filters_frame = tb.Frame(parent_frame)
+        self.dynamic_filters_frame.pack(fill=X, expand=YES, pady=5)
+
+        # --- Botões ---
+        buttons_frame = tb.Frame(parent_frame)
+        buttons_frame.pack(fill=X, expand=YES, pady=(10, 0))
+
+        self.filter_button = tb.Button(buttons_frame, text="Carregar Dados", bootstyle=SUCCESS, command=self.start_load_report_data)
+        self.filter_button.pack(side=LEFT, padx=10)
+        
+        self.export_button = tb.Button(buttons_frame, text="Exportar para Excel", bootstyle=INFO, command=self.export_to_excel)
+        self.export_button.pack(side=LEFT, padx=10)
+        self.export_button.config(state=DISABLED)
+
+    def on_data_source_changed(self, event=None):
+        """Chamado quando o usuário seleciona uma nova fonte de dados."""
+        self.rebuild_dynamic_filters()
+        source = self.data_source_combobox.get()
+        if source == 'Relatório de Produção':
+            self.notebook.tab(0, state="normal")
+            self.kpi_frame.grid()
+        else:
+            self.notebook.tab(0, state="disabled")
+            self.kpi_frame.grid_remove()
+        # Recria a tabela com as colunas da nova fonte de dados
+        self.create_detailed_table(self.table_tab_frame, table_name=source)
+
+
+    def rebuild_dynamic_filters(self):
+        """Reconstrói os filtros baseados na fonte de dados selecionada."""
+        for widget in self.dynamic_filters_frame.winfo_children():
+            widget.destroy()
+
+        source = self.data_source_combobox.get()
+        if source == 'Relatório de Produção':
+            self.create_report_filters(self.dynamic_filters_frame)
+            self.load_report_filter_data()
+        else:
+            tb.Label(self.dynamic_filters_frame, text="Filtro (coluna=valor):").pack(side=LEFT, padx=(0, 5))
+            self.generic_filter_entry = tb.Entry(self.dynamic_filters_frame, width=50)
+            self.generic_filter_entry.pack(side=LEFT, fill=X, expand=YES)
+
+    def create_report_filters(self, parent_frame):
+        """Cria os filtros específicos para o Relatório de Produção."""
         filter_row1 = tb.Frame(parent_frame)
         filter_row1.pack(fill=X, expand=YES, pady=5)
 
@@ -116,7 +168,6 @@ class DashboardManagerView(Toplevel):
         self.operator_combobox = tb.Combobox(filter_row1, state="readonly", width=25, bootstyle=PRIMARY)
         self.operator_combobox.pack(side=LEFT, padx=(0, 15))
 
-        # Linha 2 de Filtros
         filter_row2 = tb.Frame(parent_frame)
         filter_row2.pack(fill=X, expand=YES, pady=5)
 
@@ -131,17 +182,50 @@ class DashboardManagerView(Toplevel):
         tb.Label(filter_row2, text="FSC:").pack(side=LEFT, padx=(10, 5))
         self.fsc_combobox = tb.Combobox(filter_row2, state="readonly", width=15, bootstyle=PRIMARY)
         self.fsc_combobox.pack(side=LEFT, padx=(0, 15))
-        
-        # Botões
-        buttons_frame = tb.Frame(parent_frame)
-        buttons_frame.pack(fill=X, expand=YES, pady=(10, 0))
 
-        self.filter_button = tb.Button(buttons_frame, text="Aplicar Filtros", bootstyle=SUCCESS, command=self.start_load_report_data)
-        self.filter_button.pack(side=LEFT, padx=10)
-        
-        self.export_button = tb.Button(buttons_frame, text="Exportar para Excel", bootstyle=INFO, command=self.export_to_excel)
-        self.export_button.pack(side=LEFT, padx=10)
-        self.export_button.config(state=DISABLED)
+    def load_filter_data(self):
+        logging.debug("DashboardManagerView: load_filter_data")
+        """Carrega a lista de fontes de dados e os filtros para a visão padrão."""
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT table_name FROM information_schema.tables 
+                    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+                    ORDER BY table_name
+                """)
+                tables = [row[0] for row in cur.fetchall()]
+                self.data_source_combobox['values'] = ['Relatório de Produção'] + tables
+                self.data_source_combobox.set('Relatório de Produção')
+                self.on_data_source_changed() # Chama para configurar a UI inicial
+        except Exception as e:
+            messagebox.showerror("Erro", f"Não foi possível carregar fontes de dados: {e}", parent=self)
+        finally:
+            if conn:
+                release_db_connection(conn)
+
+    def load_report_filter_data(self):
+        """Carrega os dados para os comboboxes do relatório de produção."""
+        conn = self.get_db_connection()
+        if not conn: return
+        try:
+            with conn.cursor() as cur:
+                def load_combo(query, combobox):
+                    cur.execute(query)
+                    combobox['values'] = [" "] + [row[0] for row in cur.fetchall()]
+                
+                load_combo("SELECT DISTINCT cliente FROM ordem_producao WHERE cliente IS NOT NULL ORDER BY cliente", self.client_combobox)
+                load_combo("SELECT DISTINCT descricao FROM equipamentos_tipos ORDER BY descricao", self.machine_combobox)
+                load_combo("SELECT DISTINCT nome FROM impressores ORDER BY nome", self.operator_combobox)
+                load_combo("SELECT DISTINCT descricao FROM tipos_papel ORDER BY descricao", self.paper_type_combobox)
+                load_combo("SELECT DISTINCT valor FROM gramaturas_tipos ORDER BY valor", self.grammage_combobox)
+                load_combo("SELECT DISTINCT descricao FROM fsc_tipos ORDER BY descricao", self.fsc_combobox)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Não foi possível carregar dados para os filtros: {e}", parent=self)
+        finally:
+            if conn:
+                release_db_connection(conn)
 
     def create_kpi_cards(self, parent_frame):
         logging.debug("DashboardManagerView: create_kpi_cards")
@@ -190,59 +274,54 @@ class DashboardManagerView(Toplevel):
         self.graph_canvas['op_perf'] = tk.Frame(f4)
         self.graph_canvas['op_perf'].pack(fill=BOTH, expand=YES)
 
-    def create_detailed_table(self, parent_frame):
-        logging.debug("DashboardManagerView: create_detailed_table")
-        """Cria a tabela para exibir dados brutos detalhados."""
-        parent_frame.grid_rowconfigure(0, weight=1)
-        parent_frame.grid_columnconfigure(0, weight=1)
+    def create_detailed_table(self, parent_frame, table_name=None):
+        logging.debug(f"DashboardManagerView: create_detailed_table for {table_name}")
+        """Cria a tabela para exibir dados, dinamicamente se necessário."""
+        if hasattr(self, 'tree_container'):
+            self.tree_container.destroy()
         
-        cols = ('data_ordem', 'wo', 'cliente', 'servico', 'maquina', 'operador',
-                'tipo_papel', 'gramatura', 'fsc',
-                'meta_qtd', 'prod_qtd', 'saldo_qtd', 'perdas_setup', 'perdas_prod',
-                'tempo_setup', 'tempo_prod', 'tempo_parada', 'eficiencia')
-        headers = ('Data', 'WO', 'Cliente', 'Serviço', 'Máquina', 'Operador',
-                   'Tipo Papel', 'Gramatura', 'FSC',
-                   'Meta Qtd', 'Prod. Qtd', 'Saldo Qtd', 'Perdas Setup', 'Perdas Prod.',
-                   'T. Setup', 'T. Produção', 'T. Parada', 'Eficiência %')
-        
-        self.tree = tb.Treeview(parent_frame, columns=cols, show="headings")
-        for col, header in zip(cols, headers):
-            self.tree.heading(col, text=header, anchor=W)
-            self.tree.column(col, width=120, anchor=W)
-        
-        self.tree.column('cliente', width=200)
-        self.tree.column('servico', width=250)
-        self.tree.column('tipo_papel', width=150)
+        self.tree_container = tb.Frame(parent_frame)
+        self.tree_container.pack(fill=BOTH, expand=YES)
+        self.tree_container.grid_rowconfigure(0, weight=1)
+        self.tree_container.grid_columnconfigure(0, weight=1)
 
-        scrollbar_y = tb.Scrollbar(parent_frame, orient=VERTICAL, command=self.tree.yview)
-        scrollbar_x = tb.Scrollbar(parent_frame, orient=HORIZONTAL, command=self.tree.xview)
-        self.tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
-        
-        self.tree.grid(row=0, column=0, sticky=NSEW)
-        scrollbar_y.grid(row=0, column=1, sticky='ns')
-        scrollbar_x.grid(row=1, column=0, sticky='ew')
+        # Se não houver fonte de dados, não faz nada
+        if not table_name:
+            return
 
-    def load_filter_data(self):
-        logging.debug("DashboardManagerView: load_filter_data")
-        """Carrega dados iniciais para os comboboxes de filtro."""
         conn = self.get_db_connection()
         if not conn: return
         try:
             with conn.cursor() as cur:
-                # Função auxiliar para carregar combobox
-                def load_combo(query, combobox):
-                    cur.execute(query)
-                    combobox['values'] = [""] + [row[0] for row in cur.fetchall()]
+                if table_name and table_name != 'Relatório de Produção':
+                    # Usando parâmetros para segurança
+                    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = %s ORDER BY ordinal_position;", (table_name,))
+                    cols = [row[0] for row in cur.fetchall()]
+                    headers = cols
+                else: # Default to report view
+                    cols = ('data_ordem', 'wo', 'cliente', 'servico', 'maquina', 'operador',
+                            'tipo_papel', 'gramatura', 'fsc',
+                            'meta_qtd', 'prod_qtd', 'saldo_qtd', 'perdas_setup', 'perdas_prod',
+                            'tempo_setup', 'tempo_prod', 'tempo_parada', 'eficiencia')
+                    headers = ('Data', 'WO', 'Cliente', 'Serviço', 'Máquina', 'Operador',
+                               'Tipo Papel', 'Gramatura', 'FSC',
+                               'Meta Qtd', 'Prod. Qtd', 'Saldo Qtd', 'Perdas Setup', 'Perdas Prod.',
+                               'T. Setup', 'T. Produção', 'T. Parada', 'Eficiência %')
 
-                load_combo("SELECT DISTINCT cliente FROM ordem_producao WHERE cliente IS NOT NULL ORDER BY cliente", self.client_combobox)
-                load_combo("SELECT DISTINCT descricao FROM equipamentos_tipos ORDER BY descricao", self.machine_combobox)
-                load_combo("SELECT DISTINCT nome FROM impressores ORDER BY nome", self.operator_combobox)
-                load_combo("SELECT DISTINCT descricao FROM tipos_papel ORDER BY descricao", self.paper_type_combobox)
-                load_combo("SELECT DISTINCT valor FROM gramaturas_tipos ORDER BY valor", self.grammage_combobox)
-                load_combo("SELECT DISTINCT descricao FROM fsc_tipos ORDER BY descricao", self.fsc_combobox)
+                self.tree = tb.Treeview(self.tree_container, columns=cols, show="headings")
+                for col, header in zip(cols, headers):
+                    self.tree.heading(col, text=header, anchor=W)
+                    self.tree.column(col, width=120, anchor=W)
 
+                scrollbar_y = tb.Scrollbar(self.tree_container, orient=VERTICAL, command=self.tree.yview)
+                scrollbar_x = tb.Scrollbar(self.tree_container, orient=HORIZONTAL, command=self.tree.xview)
+                self.tree.configure(yscrollcommand=scrollbar_y.set, xscrollcommand=scrollbar_x.set)
+                
+                self.tree.grid(row=0, column=0, sticky=NSEW)
+                scrollbar_y.grid(row=0, column=1, sticky='ns')
+                scrollbar_x.grid(row=1, column=0, sticky='ew')
         except Exception as e:
-            messagebox.showerror("Erro", f"Não foi possível carregar dados para os filtros: {e}", parent=self)
+            messagebox.showerror("Erro ao criar tabela", f"Não foi possível gerar a tabela dinâmica: {e}", parent=self)
         finally:
             if conn:
                 release_db_connection(conn)
@@ -262,6 +341,14 @@ class DashboardManagerView(Toplevel):
         self.filter_button.config(state=DISABLED)
         self.export_button.config(state=DISABLED)
         self.config(cursor="watch")
+        
+        source = self.data_source_combobox.get()
+        if not source:
+            messagebox.showwarning("Seleção Necessária", "Por favor, selecione uma fonte de dados.", parent=self)
+            self.filter_button.config(state=NORMAL)
+            self.config(cursor="")
+            return
+
         self.reset_dashboard()
 
         threading.Thread(target=self._background_load_report, daemon=True).start()
@@ -286,23 +373,27 @@ class DashboardManagerView(Toplevel):
                 self.data_queue.put(None)
                 return
 
-            cols_to_fill = [
-                'meta_qtd', 'prod_qtd', 'perdas_setup', 'perdas_prod',
-                'tempo_setup_s', 'tempo_prod_s', 'tempo_parada_s', 'tempo_ciclo_ideal_s'
-            ]
-            for col in cols_to_fill:
-                if col in self.df.columns:
-                    self.df[col] = pd.to_numeric(self.df[col], errors='coerce').fillna(0)
-            
-            kpi_results = self._calculate_kpis(self.df)
-            chart_results = self._prepare_chart_data(self.df)
-            table_results = self._prepare_table_data(self.df)
+            source = self.data_source_combobox.get()
+            if source == 'Relatório de Produção':
+                cols_to_fill = [
+                    'meta_qtd', 'prod_qtd', 'perdas_setup', 'perdas_prod',
+                    'tempo_setup_s', 'tempo_prod_s', 'tempo_parada_s', 'tempo_ciclo_ideal_s'
+                ]
+                for col in cols_to_fill:
+                    if col in self.df.columns:
+                        self.df[col] = pd.to_numeric(self.df[col], errors='coerce').fillna(0)
+                
+                kpi_results = self._calculate_kpis(self.df)
+                chart_results = self._prepare_chart_data(self.df)
+                table_results = self._prepare_table_data(self.df)
 
-            self.data_queue.put({
-                "kpis": kpi_results,
-                "charts": chart_results,
-                "table": table_results
-            })
+                self.data_queue.put({
+                    "kpis": kpi_results,
+                    "charts": chart_results,
+                    "table": table_results
+                })
+            else:
+                self.data_queue.put({"table_raw": self.df})
 
         except Exception as e:
             self.data_queue.put(e)
@@ -330,9 +421,13 @@ class DashboardManagerView(Toplevel):
                 self.export_button.config(state=DISABLED)
                 return
 
-            self.update_kpis(result["kpis"])
-            self.update_charts(result["charts"])
-            self.update_detailed_table(result["table"])
+            if 'table_raw' in result:
+                self.update_detailed_table(result['table_raw'])
+            else:
+                self.update_kpis(result["kpis"])
+                self.update_charts(result["charts"])
+                self.update_detailed_table(result["table"])
+            
             self.export_button.config(state=NORMAL)
 
         except queue.Empty:
@@ -342,96 +437,99 @@ class DashboardManagerView(Toplevel):
         logging.debug("DashboardManagerView: build_sql_query")
         """Constrói a consulta SQL com base nos filtros da interface, usando JOINS."""
         
-        query = '''
-            SELECT
-                op.data_cadastro_pcp AS data_ordem,
-                op.numero_wo,
-                op.cliente,
-                os.descricao AS servico,
-                et.descricao AS maquina,
-                imp.nome AS operador,
-                tp.descricao AS tipo_papel,
-                gt.valor AS gramatura,
-                ft.descricao AS fsc,
-                opm.tiragem_em_folhas AS meta_qtd,
-                ap.quantidadeproduzida AS prod_qtd,
-                COALESCE(aps.perdas, 0) AS perdas_setup,
-                COALESCE(ap.perdas_producao, 0) AS perdas_prod,
-                EXTRACT(EPOCH FROM (aps.hora_fim - aps.hora_inicio)) AS tempo_setup_s,
-                EXTRACT(EPOCH FROM (ap.horafim - ap.horainicio)) AS tempo_prod_s,
-                (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.hora_fim_parada - p.hora_inicio_parada))), 0) 
-                 FROM paradas p WHERE p.apontamento_id = ap.id) AS tempo_parada_s,
-                (et.tempo_por_folha_ms / 1000.0) AS tempo_ciclo_ideal_s
-            FROM
-                ordem_producao op
-            LEFT JOIN ordem_servicos os ON op.id = os.ordem_id
-            LEFT JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
-            LEFT JOIN equipamentos_tipos et ON opm.equipamento_id = et.id
-            LEFT JOIN apontamento ap ON os.id = ap.servico_id
-            LEFT JOIN apontamento_setup aps ON os.id = aps.servico_id
-            LEFT JOIN impressores imp ON ap.impressor_id = imp.id
-            LEFT JOIN tipos_papel tp ON op.tipo_papel_id = tp.id
-            LEFT JOIN gramaturas_tipos gt ON op.gramatura_id = gt.id
-            LEFT JOIN fsc_tipos ft ON op.fsc_id = ft.id
-        '''
-        
-        filters = []
+        source = self.data_source_combobox.get()
         params = []
+        
+        if source == 'Relatório de Produção':
+            query = '''
+                SELECT
+                    op.data_cadastro_pcp AS data_ordem,
+                    op.numero_wo,
+                    op.cliente,
+                    os.descricao AS servico,
+                    et.descricao AS maquina,
+                    imp.nome AS operador,
+                    tp.descricao AS tipo_papel,
+                    gt.valor AS gramatura,
+                    ft.descricao AS fsc,
+                    opm.tiragem_em_folhas AS meta_qtd,
+                    ap.quantidadeproduzida AS prod_qtd,
+                    COALESCE(aps.perdas, 0) AS perdas_setup,
+                    COALESCE(ap.perdas_producao, 0) AS perdas_prod,
+                    EXTRACT(EPOCH FROM (aps.hora_fim - aps.hora_inicio)) AS tempo_setup_s,
+                    EXTRACT(EPOCH FROM (ap.horafim - ap.horainicio)) AS tempo_prod_s,
+                    (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.hora_fim_parada - p.hora_inicio_parada))), 0) 
+                     FROM paradas p WHERE p.apontamento_id = ap.id) AS tempo_parada_s,
+                    (et.tempo_por_folha_ms / 1000.0) AS tempo_ciclo_ideal_s
+                FROM
+                    ordem_producao op
+                LEFT JOIN ordem_servicos os ON op.id = os.ordem_id
+                LEFT JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
+                LEFT JOIN equipamentos_tipos et ON opm.equipamento_id = et.id
+                LEFT JOIN apontamento ap ON os.id = ap.servico_id
+                LEFT JOIN apontamento_setup aps ON os.id = aps.servico_id
+                LEFT JOIN impressores imp ON ap.impressor_id = imp.id
+                LEFT JOIN tipos_papel tp ON op.tipo_papel_id = tp.id
+                LEFT JOIN gramaturas_tipos gt ON op.gramatura_id = gt.id
+                LEFT JOIN fsc_tipos ft ON op.fsc_id = ft.id
+            '''
+            filters = []
+            if hasattr(self, 'start_date_entry') and self.start_date_entry.entry.get():
+                try:
+                    filters.append("op.data_cadastro_pcp >= %s")
+                    params.append(datetime.strptime(self.start_date_entry.entry.get(), '%d/%m/%Y').date())
+                except ValueError: pass
+            if hasattr(self, 'end_date_entry') and self.end_date_entry.entry.get():
+                try:
+                    filters.append("op.data_cadastro_pcp <= %s")
+                    params.append(datetime.strptime(self.end_date_entry.entry.get(), '%d/%m/%Y').date())
+                except ValueError: pass
+            if hasattr(self, 'client_combobox') and self.client_combobox.get():
+                filters.append("op.cliente = %s")
+                params.append(self.client_combobox.get())
+            if hasattr(self, 'machine_combobox') and self.machine_combobox.get():
+                filters.append("et.descricao = %s")
+                params.append(self.machine_combobox.get())
+            if hasattr(self, 'operator_combobox') and self.operator_combobox.get():
+                filters.append("imp.nome = %s")
+                params.append(self.operator_combobox.get())
+            if hasattr(self, 'paper_type_combobox') and self.paper_type_combobox.get():
+                filters.append("tp.descricao = %s")
+                params.append(self.paper_type_combobox.get())
+            if hasattr(self, 'grammage_combobox') and self.grammage_combobox.get():
+                filters.append("gt.valor = %s")
+                params.append(self.grammage_combobox.get())
+            if hasattr(self, 'fsc_combobox') and self.fsc_combobox.get():
+                filters.append("ft.descricao = %s")
+                params.append(self.fsc_combobox.get())
+            
+            if filters:
+                query += " WHERE " + " AND ".join(filters)
+            query += " ORDER BY op.data_cadastro_pcp DESC, op.numero_wo"
+        else:
+            query = f'SELECT * FROM public.\"{source}\"' # Note the escaped quotes for the table name
+            if hasattr(self, 'generic_filter_entry') and self.generic_filter_entry.get():
+                try:
+                    col, val = self.generic_filter_entry.get().split('=', 1)
+                    query += f' WHERE \"{col.strip()}\" ILIKE %s' # Note the escaped quotes for the column name
+                    params.append(f"%{val.strip()}%")
+                except ValueError:
+                    messagebox.showwarning("Filtro Inválido", "Use o formato 'coluna=valor' para filtrar.", parent=self)
 
-        start_date = self.start_date_entry.entry.get()
-        if start_date:
-            try:
-                filters.append("op.data_cadastro_pcp >= %s")
-                params.append(datetime.strptime(start_date, '%d/%m/%Y').date())
-            except ValueError: pass
-
-        end_date = self.end_date_entry.entry.get()
-        if end_date:
-            try:
-                filters.append("op.data_cadastro_pcp <= %s")
-                params.append(datetime.strptime(end_date, '%d/%m/%Y').date())
-            except ValueError: pass
-
-        if self.client_combobox.get():
-            filters.append("op.cliente = %s")
-            params.append(self.client_combobox.get())
-
-        if self.machine_combobox.get():
-            filters.append("et.descricao = %s")
-            params.append(self.machine_combobox.get())
-
-        if self.operator_combobox.get():
-            filters.append("imp.nome = %s")
-            params.append(self.operator_combobox.get())
-
-        if self.paper_type_combobox.get():
-            filters.append("tp.descricao = %s")
-            params.append(self.paper_type_combobox.get())
-
-        if self.grammage_combobox.get():
-            filters.append("gt.valor = %s")
-            params.append(self.grammage_combobox.get())
-
-        if self.fsc_combobox.get():
-            filters.append("ft.descricao = %s")
-            params.append(self.fsc_combobox.get())
-
-        if filters:
-            query += " WHERE " + " AND ".join(filters)
-
-        query += " ORDER BY op.data_cadastro_pcp DESC, op.numero_wo"
         return query, params
 
     def reset_dashboard(self):
         logging.debug("DashboardManagerView: reset_dashboard")
         """Limpa todos os dados da tela."""
-        self.kpi_oee_label.config(text="0.00%")
-        self.kpi_total_produzido_label.config(text="0")
-        self.kpi_total_perdas_label.config(text="0")
-        self.kpi_tempo_paradas_label.config(text="00:00:00")
+        if hasattr(self, 'kpi_oee_label'):
+            self.kpi_oee_label.config(text="0.00%")
+            self.kpi_total_produzido_label.config(text="0")
+            self.kpi_total_perdas_label.config(text="0")
+            self.kpi_tempo_paradas_label.config(text="00:00:00")
         
-        for i in self.tree.get_children():
-            self.tree.delete(i)
+        if hasattr(self, 'tree'):
+            for i in self.tree.get_children():
+                self.tree.delete(i)
             
         for canvas_frame in self.graph_canvas.values():
             for widget in canvas_frame.winfo_children():
@@ -495,7 +593,7 @@ class DashboardManagerView(Toplevel):
 
     def _prepare_table_data(self, df):
         logging.debug("DashboardManagerView: _prepare_table_data")
-        """Prepara os dados formatados para a tabela. Roda em background."""
+        """Prepara os dados formatados para a tabela do relatório."""
         table_rows = []
         for _, row in df.iterrows():
             saldo_qtd = (row['prod_qtd'] or 0) - (row['meta_qtd'] or 0)
@@ -554,13 +652,23 @@ class DashboardManagerView(Toplevel):
             colors=['#17a2b8']
         )
 
-    def update_detailed_table(self, table_data):
+    def update_detailed_table(self, data):
         logging.debug("DashboardManagerView: update_detailed_table")
-        """Popula a tabela de dados detalhados com dados pré-formatados."""
+        """Popula a tabela de dados detalhados com dados pré-formatados ou brutos."""
         for i in self.tree.get_children():
             self.tree.delete(i)
-        for values in table_data:
-            self.tree.insert("", "end", values=values)
+        
+        if isinstance(data, pd.DataFrame):
+            # Limpa os dados antes de inserir novos
+            for i in self.tree.get_children():
+                self.tree.delete(i)
+            # Converte todas as colunas do DataFrame para string para exibição segura
+            df_str = data.astype(str).replace('nan', '')
+            for row in df_str.itertuples(index=False, name=None):
+                self.tree.insert("", "end", values=row)
+        else: # Assume que são as linhas pré-formatadas do relatório
+            for values in data:
+                self.tree.insert("", "end", values=values)
     
     def _clear_canvas(self, canvas_frame):
         logging.debug("DashboardManagerView: _clear_canvas")
@@ -645,33 +753,31 @@ class DashboardManagerView(Toplevel):
             return
 
         try:
-            # Preparar um DataFrame mais amigável para exportação
             df_export = self.df.copy()
-            
-            # Formatar colunas de tempo
-            for col in ['tempo_setup_s', 'tempo_prod_s', 'tempo_parada_s']:
-                if col in df_export.columns:
-                    df_export[col] = df_export[col].apply(self.format_seconds_to_hhmmss)
+            source = self.data_source_combobox.get()
 
-            # Renomear colunas para nomes mais claros
-            column_mapping = {
-                'data_ordem': 'Data Ordem', 'numero_wo': 'WO', 'cliente': 'Cliente', 'servico': 'Serviço',
-                'maquina': 'Máquina', 'operador': 'Operador', 'tipo_papel': 'Tipo Papel', 'gramatura': 'Gramatura',
-                'fsc': 'FSC', 'meta_qtd': 'Meta Qtd', 'prod_qtd': 'Produzido Qtd', 'perdas_setup': 'Perdas Setup',
-                'perdas_prod': 'Perdas Produção', 'tempo_setup_s': 'Tempo Setup', 'tempo_prod_s': 'Tempo Produção',
-                'tempo_parada_s': 'Tempo Parada', 'tempo_ciclo_ideal_s': 'Ciclo Ideal (s)'
-            }
-            df_export.rename(columns=column_mapping, inplace=True)
+            if source == 'Relatório de Produção':
+                for col in ['tempo_setup_s', 'tempo_prod_s', 'tempo_parada_s']:
+                    if col in df_export.columns:
+                        df_export[col] = df_export[col].apply(self.format_seconds_to_hhmmss)
+                
+                column_mapping = {
+                    'data_ordem': 'Data Ordem', 'numero_wo': 'WO', 'cliente': 'Cliente', 'servico': 'Serviço',
+                    'maquina': 'Máquina', 'operador': 'Operador', 'tipo_papel': 'Tipo Papel', 'gramatura': 'Gramatura',
+                    'fsc': 'FSC', 'meta_qtd': 'Meta Qtd', 'prod_qtd': 'Produzido Qtd', 'perdas_setup': 'Perdas Setup',
+                    'perdas_prod': 'Perdas Produção', 'tempo_setup_s': 'Tempo Setup', 'tempo_prod_s': 'Tempo Produção',
+                    'tempo_parada_s': 'Tempo Parada', 'tempo_ciclo_ideal_s': 'Ciclo Ideal (s)'
+                }
+                df_export.rename(columns=column_mapping, inplace=True)
+                
+                export_cols = [
+                    'Data Ordem', 'WO', 'Cliente', 'Serviço', 'Máquina', 'Operador', 'Tipo Papel', 'Gramatura', 'FSC',
+                    'Meta Qtd', 'Produzido Qtd', 'Perdas Setup', 'Perdas Produção', 'Tempo Setup', 'Tempo Produção', 'Tempo Parada'
+                ]
+                export_cols_exist = [col for col in export_cols if col in df_export.columns]
+                df_export = df_export[export_cols_exist]
 
-            # Selecionar e ordenar colunas para o relatório final
-            export_cols = [
-                'Data Ordem', 'WO', 'Cliente', 'Serviço', 'Máquina', 'Operador', 'Tipo Papel', 'Gramatura', 'FSC',
-                'Meta Qtd', 'Produzido Qtd', 'Perdas Setup', 'Perdas Produção', 'Tempo Setup', 'Tempo Produção', 'Tempo Parada'
-            ]
-            # Garantir que apenas colunas existentes sejam usadas
-            export_cols_exist = [col for col in export_cols if col in df_export.columns]
-            
-            df_export[export_cols_exist].to_excel(file_path, index=False, engine='openpyxl')
+            df_export.to_excel(file_path, index=False, engine='openpyxl')
             messagebox.showinfo("Exportação Concluída", f"Relatório salvo com sucesso em:\n{file_path}", parent=self)
 
         except Exception as e:
