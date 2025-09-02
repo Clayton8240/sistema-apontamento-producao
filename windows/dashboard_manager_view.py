@@ -3,7 +3,7 @@
 # dashboard_manager_view.py
 
 import tkinter as tk
-from tkinter import messagebox, Toplevel, W, CENTER, BOTH, YES, X, Y, RIGHT, VERTICAL, HORIZONTAL, BOTTOM, NSEW, N
+from tkinter import messagebox, Toplevel, W, CENTER, BOTH, YES, X, Y, RIGHT, VERTICAL, HORIZONTAL, BOTTOM, NSEW, N, filedialog
 from datetime import datetime
 import psycopg2
 import pandas as pd
@@ -42,6 +42,7 @@ class DashboardManagerView(Toplevel):
 
         self.graph_canvas = {}
         self.data_queue = queue.Queue()
+        self.df = pd.DataFrame() # Dataframe para armazenar os dados carregados
 
         self.create_widgets()
         self.load_filter_data()
@@ -90,25 +91,57 @@ class DashboardManagerView(Toplevel):
 
     def create_filter_controls(self, parent_frame):
         logging.debug("DashboardManagerView: create_filter_controls")
-        """Cria os controles de filtro (data, cliente, máquina)."""
-        tb.Label(parent_frame, text="Período: De").pack(side=LEFT, padx=(0, 5))
-        self.start_date_entry = DateEntry(parent_frame, dateformat='%d/%m/%Y', bootstyle=PRIMARY)
+        """Cria os controles de filtro em duas linhas para melhor organização."""
+        # Linha 1 de Filtros
+        filter_row1 = tb.Frame(parent_frame)
+        filter_row1.pack(fill=X, expand=YES, pady=5)
+
+        tb.Label(filter_row1, text="Período: De").pack(side=LEFT, padx=(0, 5))
+        self.start_date_entry = DateEntry(filter_row1, dateformat='%d/%m/%Y', bootstyle=PRIMARY)
         self.start_date_entry.pack(side=LEFT)
         
-        tb.Label(parent_frame, text="Até").pack(side=LEFT, padx=5)
-        self.end_date_entry = DateEntry(parent_frame, dateformat='%d/%m/%Y', bootstyle=PRIMARY)
-        self.end_date_entry.pack(side=LEFT, padx=(0, 20))
+        tb.Label(filter_row1, text="Até").pack(side=LEFT, padx=5)
+        self.end_date_entry = DateEntry(filter_row1, dateformat='%d/%m/%Y', bootstyle=PRIMARY)
+        self.end_date_entry.pack(side=LEFT, padx=(0, 15))
 
-        tb.Label(parent_frame, text="Cliente:").pack(side=LEFT, padx=(10, 5))
-        self.client_combobox = tb.Combobox(parent_frame, state="readonly", width=30, bootstyle=PRIMARY)
-        self.client_combobox.pack(side=LEFT, padx=(0, 20))
+        tb.Label(filter_row1, text="Cliente:").pack(side=LEFT, padx=(10, 5))
+        self.client_combobox = tb.Combobox(filter_row1, state="readonly", width=25, bootstyle=PRIMARY)
+        self.client_combobox.pack(side=LEFT, padx=(0, 15))
         
-        tb.Label(parent_frame, text="Máquina:").pack(side=LEFT, padx=(10, 5))
-        self.machine_combobox = tb.Combobox(parent_frame, state="readonly", width=30, bootstyle=PRIMARY)
-        self.machine_combobox.pack(side=LEFT, padx=(0, 20))
+        tb.Label(filter_row1, text="Máquina:").pack(side=LEFT, padx=(10, 5))
+        self.machine_combobox = tb.Combobox(filter_row1, state="readonly", width=25, bootstyle=PRIMARY)
+        self.machine_combobox.pack(side=LEFT, padx=(0, 15))
+
+        tb.Label(filter_row1, text="Operador:").pack(side=LEFT, padx=(10, 5))
+        self.operator_combobox = tb.Combobox(filter_row1, state="readonly", width=25, bootstyle=PRIMARY)
+        self.operator_combobox.pack(side=LEFT, padx=(0, 15))
+
+        # Linha 2 de Filtros
+        filter_row2 = tb.Frame(parent_frame)
+        filter_row2.pack(fill=X, expand=YES, pady=5)
+
+        tb.Label(filter_row2, text="Tipo de Papel:").pack(side=LEFT, padx=(0, 5))
+        self.paper_type_combobox = tb.Combobox(filter_row2, state="readonly", width=20, bootstyle=PRIMARY)
+        self.paper_type_combobox.pack(side=LEFT, padx=(0, 15))
+
+        tb.Label(filter_row2, text="Gramatura:").pack(side=LEFT, padx=(10, 5))
+        self.grammage_combobox = tb.Combobox(filter_row2, state="readonly", width=15, bootstyle=PRIMARY)
+        self.grammage_combobox.pack(side=LEFT, padx=(0, 15))
+
+        tb.Label(filter_row2, text="FSC:").pack(side=LEFT, padx=(10, 5))
+        self.fsc_combobox = tb.Combobox(filter_row2, state="readonly", width=15, bootstyle=PRIMARY)
+        self.fsc_combobox.pack(side=LEFT, padx=(0, 15))
         
-        self.filter_button = tb.Button(parent_frame, text="Aplicar Filtros", bootstyle=SUCCESS, command=self.start_load_report_data)
+        # Botões
+        buttons_frame = tb.Frame(parent_frame)
+        buttons_frame.pack(fill=X, expand=YES, pady=(10, 0))
+
+        self.filter_button = tb.Button(buttons_frame, text="Aplicar Filtros", bootstyle=SUCCESS, command=self.start_load_report_data)
         self.filter_button.pack(side=LEFT, padx=10)
+        
+        self.export_button = tb.Button(buttons_frame, text="Exportar para Excel", bootstyle=INFO, command=self.export_to_excel)
+        self.export_button.pack(side=LEFT, padx=10)
+        self.export_button.config(state=DISABLED)
 
     def create_kpi_cards(self, parent_frame):
         logging.debug("DashboardManagerView: create_kpi_cards")
@@ -164,9 +197,11 @@ class DashboardManagerView(Toplevel):
         parent_frame.grid_columnconfigure(0, weight=1)
         
         cols = ('data_ordem', 'wo', 'cliente', 'servico', 'maquina', 'operador',
+                'tipo_papel', 'gramatura', 'fsc',
                 'meta_qtd', 'prod_qtd', 'saldo_qtd', 'perdas_setup', 'perdas_prod',
                 'tempo_setup', 'tempo_prod', 'tempo_parada', 'eficiencia')
         headers = ('Data', 'WO', 'Cliente', 'Serviço', 'Máquina', 'Operador',
+                   'Tipo Papel', 'Gramatura', 'FSC',
                    'Meta Qtd', 'Prod. Qtd', 'Saldo Qtd', 'Perdas Setup', 'Perdas Prod.',
                    'T. Setup', 'T. Produção', 'T. Parada', 'Eficiência %')
         
@@ -177,6 +212,7 @@ class DashboardManagerView(Toplevel):
         
         self.tree.column('cliente', width=200)
         self.tree.column('servico', width=250)
+        self.tree.column('tipo_papel', width=150)
 
         scrollbar_y = tb.Scrollbar(parent_frame, orient=VERTICAL, command=self.tree.yview)
         scrollbar_x = tb.Scrollbar(parent_frame, orient=HORIZONTAL, command=self.tree.xview)
@@ -193,11 +229,18 @@ class DashboardManagerView(Toplevel):
         if not conn: return
         try:
             with conn.cursor() as cur:
-                cur.execute("SELECT DISTINCT cliente FROM ordem_producao WHERE cliente IS NOT NULL ORDER BY cliente")
-                self.client_combobox['values'] = [""] + [row[0] for row in cur.fetchall()]
-                
-                cur.execute("SELECT DISTINCT descricao FROM equipamentos_tipos ORDER BY descricao")
-                self.machine_combobox['values'] = [""] + [row[0] for row in cur.fetchall()]
+                # Função auxiliar para carregar combobox
+                def load_combo(query, combobox):
+                    cur.execute(query)
+                    combobox['values'] = [""] + [row[0] for row in cur.fetchall()]
+
+                load_combo("SELECT DISTINCT cliente FROM ordem_producao WHERE cliente IS NOT NULL ORDER BY cliente", self.client_combobox)
+                load_combo("SELECT DISTINCT descricao FROM equipamentos_tipos ORDER BY descricao", self.machine_combobox)
+                load_combo("SELECT DISTINCT nome FROM impressores ORDER BY nome", self.operator_combobox)
+                load_combo("SELECT DISTINCT descricao FROM tipos_papel ORDER BY descricao", self.paper_type_combobox)
+                load_combo("SELECT DISTINCT valor FROM gramaturas_tipos ORDER BY valor", self.grammage_combobox)
+                load_combo("SELECT DISTINCT descricao FROM fsc_tipos ORDER BY descricao", self.fsc_combobox)
+
         except Exception as e:
             messagebox.showerror("Erro", f"Não foi possível carregar dados para os filtros: {e}", parent=self)
         finally:
@@ -217,6 +260,7 @@ class DashboardManagerView(Toplevel):
         logging.debug("DashboardManagerView: start_load_report_data")
         """Inicia o carregamento dos dados em uma thread separada para não bloquear a UI."""
         self.filter_button.config(state=DISABLED)
+        self.export_button.config(state=DISABLED)
         self.config(cursor="watch")
         self.reset_dashboard()
 
@@ -227,6 +271,7 @@ class DashboardManagerView(Toplevel):
         logging.debug("DashboardManagerView: _background_load_report")
         """Esta função roda em uma thread separada para buscar e processar os dados."""
         conn = None
+        self.df = pd.DataFrame() # Reseta o dataframe
         try:
             conn = self.get_db_connection()
             if not conn:
@@ -235,9 +280,9 @@ class DashboardManagerView(Toplevel):
             base_query, params = self.build_sql_query()
             
             with conn:
-                df = pd.read_sql_query(base_query, conn, params=params)
+                self.df = pd.read_sql_query(base_query, conn, params=params)
 
-            if df.empty:
+            if self.df.empty:
                 self.data_queue.put(None)
                 return
 
@@ -246,12 +291,12 @@ class DashboardManagerView(Toplevel):
                 'tempo_setup_s', 'tempo_prod_s', 'tempo_parada_s', 'tempo_ciclo_ideal_s'
             ]
             for col in cols_to_fill:
-                if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                if col in self.df.columns:
+                    self.df[col] = pd.to_numeric(self.df[col], errors='coerce').fillna(0)
             
-            kpi_results = self._calculate_kpis(df)
-            chart_results = self._prepare_chart_data(df)
-            table_results = self._prepare_table_data(df)
+            kpi_results = self._calculate_kpis(self.df)
+            chart_results = self._prepare_chart_data(self.df)
+            table_results = self._prepare_table_data(self.df)
 
             self.data_queue.put({
                 "kpis": kpi_results,
@@ -282,48 +327,99 @@ class DashboardManagerView(Toplevel):
             if result is None:
                 messagebox.showinfo("Sem Dados", "Nenhum dado encontrado para os filtros selecionados.", parent=self)
                 self.reset_dashboard()
+                self.export_button.config(state=DISABLED)
                 return
 
             self.update_kpis(result["kpis"])
             self.update_charts(result["charts"])
             self.update_detailed_table(result["table"])
+            self.export_button.config(state=NORMAL)
 
         except queue.Empty:
             self.after(100, self._check_load_report_queue)
 
     def build_sql_query(self):
         logging.debug("DashboardManagerView: build_sql_query")
-        """Constrói a consulta SQL com base nos filtros da interface, usando a VIEW."""
-        query = "SELECT * FROM mv_relatorio_producao_consolidado"
+        """Constrói a consulta SQL com base nos filtros da interface, usando JOINS."""
+        
+        query = '''
+            SELECT
+                op.data_cadastro_pcp AS data_ordem,
+                op.numero_wo,
+                op.cliente,
+                os.descricao AS servico,
+                et.descricao AS maquina,
+                imp.nome AS operador,
+                tp.descricao AS tipo_papel,
+                gt.valor AS gramatura,
+                ft.descricao AS fsc,
+                opm.tiragem_em_folhas AS meta_qtd,
+                ap.quantidadeproduzida AS prod_qtd,
+                COALESCE(aps.perdas, 0) AS perdas_setup,
+                COALESCE(ap.perdas_producao, 0) AS perdas_prod,
+                EXTRACT(EPOCH FROM (aps.hora_fim - aps.hora_inicio)) AS tempo_setup_s,
+                EXTRACT(EPOCH FROM (ap.horafim - ap.horainicio)) AS tempo_prod_s,
+                (SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (p.hora_fim_parada - p.hora_inicio_parada))), 0) 
+                 FROM paradas p WHERE p.apontamento_id = ap.id) AS tempo_parada_s,
+                (et.tempo_por_folha_ms / 1000.0) AS tempo_ciclo_ideal_s
+            FROM
+                ordem_producao op
+            LEFT JOIN ordem_servicos os ON op.id = os.ordem_id
+            LEFT JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
+            LEFT JOIN equipamentos_tipos et ON opm.equipamento_id = et.id
+            LEFT JOIN apontamento ap ON os.id = ap.servico_id
+            LEFT JOIN apontamento_setup aps ON os.id = aps.servico_id
+            LEFT JOIN impressores imp ON ap.impressor_id = imp.id
+            LEFT JOIN tipos_papel tp ON op.tipo_papel_id = tp.id
+            LEFT JOIN gramaturas_tipos gt ON op.gramatura_id = gt.id
+            LEFT JOIN fsc_tipos ft ON op.fsc_id = ft.id
+        '''
+        
         filters = []
         params = []
 
         start_date = self.start_date_entry.entry.get()
         if start_date:
             try:
-                filters.append("data_ordem >= %s")
+                filters.append("op.data_cadastro_pcp >= %s")
                 params.append(datetime.strptime(start_date, '%d/%m/%Y').date())
             except ValueError: pass
 
         end_date = self.end_date_entry.entry.get()
         if end_date:
             try:
-                filters.append("data_ordem <= %s")
+                filters.append("op.data_cadastro_pcp <= %s")
                 params.append(datetime.strptime(end_date, '%d/%m/%Y').date())
             except ValueError: pass
 
         if self.client_combobox.get():
-            filters.append("cliente = %s")
+            filters.append("op.cliente = %s")
             params.append(self.client_combobox.get())
 
         if self.machine_combobox.get():
-            filters.append("maquina = %s")
+            filters.append("et.descricao = %s")
             params.append(self.machine_combobox.get())
+
+        if self.operator_combobox.get():
+            filters.append("imp.nome = %s")
+            params.append(self.operator_combobox.get())
+
+        if self.paper_type_combobox.get():
+            filters.append("tp.descricao = %s")
+            params.append(self.paper_type_combobox.get())
+
+        if self.grammage_combobox.get():
+            filters.append("gt.valor = %s")
+            params.append(self.grammage_combobox.get())
+
+        if self.fsc_combobox.get():
+            filters.append("ft.descricao = %s")
+            params.append(self.fsc_combobox.get())
 
         if filters:
             query += " WHERE " + " AND ".join(filters)
 
-        query += " ORDER BY data_ordem DESC, numero_wo"
+        query += " ORDER BY op.data_cadastro_pcp DESC, op.numero_wo"
         return query, params
 
     def reset_dashboard(self):
@@ -347,7 +443,7 @@ class DashboardManagerView(Toplevel):
         total_produzido = df['prod_qtd'].sum()
         total_perdas_setup = df['perdas_setup'].sum()
         total_perdas_prod = df['perdas_prod'].sum()
-        total_perdas = total_perpas_setup + total_perdas_prod
+        total_perdas = total_perdas_setup + total_perdas_prod
         total_paradas_s = df['tempo_parada_s'].sum()
         tempo_producao_real_s = df['tempo_prod_s'].sum()
 
@@ -411,6 +507,7 @@ class DashboardManagerView(Toplevel):
             values = (
                 row['data_ordem'].strftime('%d/%m/%Y') if pd.notna(row['data_ordem']) else '',
                 row['numero_wo'] or '', row['cliente'] or '', row['servico'] or '', row['maquina'] or '', row['operador'] or '-',
+                row['tipo_papel'] or '', row['gramatura'] or '', row['fsc'] or '',
                 f"{int(row['meta_qtd'] or 0):,}".replace(',', '.'),
                 f"{int(row['prod_qtd'] or 0):,}".replace(',', '.'),
                 f"{int(saldo_qtd):,}".replace(',', '.'),
@@ -531,3 +628,52 @@ class DashboardManagerView(Toplevel):
         canvas = FigureCanvasTkAgg(fig, master=canvas_frame)
         canvas.draw()
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    def export_to_excel(self):
+        logging.debug("DashboardManagerView: export_to_excel")
+        """Exporta o conteúdo do DataFrame atual para um arquivo Excel."""
+        if self.df.empty:
+            messagebox.showwarning("Nenhum Dado", "Não há dados para exportar.", parent=self)
+            return
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Arquivos Excel", "*.xlsx"), ("Todos os arquivos", "*.*")],
+            title="Salvar Relatório como Excel"
+        )
+        if not file_path:
+            return
+
+        try:
+            # Preparar um DataFrame mais amigável para exportação
+            df_export = self.df.copy()
+            
+            # Formatar colunas de tempo
+            for col in ['tempo_setup_s', 'tempo_prod_s', 'tempo_parada_s']:
+                if col in df_export.columns:
+                    df_export[col] = df_export[col].apply(self.format_seconds_to_hhmmss)
+
+            # Renomear colunas para nomes mais claros
+            column_mapping = {
+                'data_ordem': 'Data Ordem', 'numero_wo': 'WO', 'cliente': 'Cliente', 'servico': 'Serviço',
+                'maquina': 'Máquina', 'operador': 'Operador', 'tipo_papel': 'Tipo Papel', 'gramatura': 'Gramatura',
+                'fsc': 'FSC', 'meta_qtd': 'Meta Qtd', 'prod_qtd': 'Produzido Qtd', 'perdas_setup': 'Perdas Setup',
+                'perdas_prod': 'Perdas Produção', 'tempo_setup_s': 'Tempo Setup', 'tempo_prod_s': 'Tempo Produção',
+                'tempo_parada_s': 'Tempo Parada', 'tempo_ciclo_ideal_s': 'Ciclo Ideal (s)'
+            }
+            df_export.rename(columns=column_mapping, inplace=True)
+
+            # Selecionar e ordenar colunas para o relatório final
+            export_cols = [
+                'Data Ordem', 'WO', 'Cliente', 'Serviço', 'Máquina', 'Operador', 'Tipo Papel', 'Gramatura', 'FSC',
+                'Meta Qtd', 'Produzido Qtd', 'Perdas Setup', 'Perdas Produção', 'Tempo Setup', 'Tempo Produção', 'Tempo Parada'
+            ]
+            # Garantir que apenas colunas existentes sejam usadas
+            export_cols_exist = [col for col in export_cols if col in df_export.columns]
+            
+            df_export[export_cols_exist].to_excel(file_path, index=False, engine='openpyxl')
+            messagebox.showinfo("Exportação Concluída", f"Relatório salvo com sucesso em:\n{file_path}", parent=self)
+
+        except Exception as e:
+            logging.error(f"Erro ao exportar para Excel: {e}")
+            messagebox.showerror("Erro de Exportação", f"Não foi possível salvar o arquivo.\nErro: {e}", parent=self)
