@@ -499,3 +499,28 @@ def finish_service(service_id):
     finally:
         if conn:
             release_db_connection(conn)
+
+# --- User Services ---
+def get_manageable_users(current_user_role):
+    """
+    Retorna uma lista de usuários que o usuário atual pode gerenciar.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            if current_user_role in ['admin', 'gerencial']:
+                cur.execute("SELECT id, nome_usuario, permissao, ativo FROM usuarios ORDER BY nome_usuario")
+            elif current_user_role == 'qualidade':
+                cur.execute("SELECT id, nome_usuario, permissao, ativo FROM usuarios WHERE permissao IN ('qualidade', 'offset') ORDER BY nome_usuario")
+            else:
+                return [] # Outros perfis não gerenciam usuários
+            
+            columns = [col[0] for col in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
+    except (Exception, psycopg2.Error) as e:
+        logging.error(f"Erro ao buscar usuários gerenciáveis: {e}")
+        raise ServiceError(f"Erro ao buscar usuários gerenciáveis: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)

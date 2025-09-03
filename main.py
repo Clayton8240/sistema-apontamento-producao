@@ -79,7 +79,7 @@ class AppController:
         try:
             initialize_connection_pool(self.db_config)
             
-            if self.user_permission == 'admin':
+            if self.user_permission in ['admin', 'gerencial', 'qualidade']:
                 self.main_window = MenuPrincipalWindow(self.root, self, self.db_config, self.user_permission)
             elif self.user_permission == 'pcp':
                 self.main_window = PCPWindow(self.root, self.db_config)

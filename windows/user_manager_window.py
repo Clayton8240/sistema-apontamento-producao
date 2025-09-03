@@ -7,15 +7,17 @@ from ttkbootstrap.constants import *
 from tkinter import messagebox, Toplevel, END, W
 
 from database import get_db_connection, release_db_connection
+from services import get_manageable_users, ServiceError # <-- MODIFICADO
 
 class UserManagerWindow(Toplevel):
     """
     Janela para administradores gerenciarem os usuários da aplicação.
     """
-    def __init__(self, master, db_config):
+    def __init__(self, master, db_config, permission):
         super().__init__(master)
         self.master = master
         self.db_config = db_config
+        self.permission = permission # <-- NOVO
 
         self.title("Gerenciamento de Usuários")
         self.geometry("800x600")
@@ -60,23 +62,28 @@ class UserManagerWindow(Toplevel):
         self.tree.configure(yscrollcommand=scrollbar.set)
 
     def load_users(self):
-        """Carrega e exibe todos os usuários do banco de dados na Treeview."""
+        """Carrega e exibe os usuários permitidos na Treeview."""
         for item in self.tree.get_children():
             self.tree.delete(item)
         
-        conn = get_db_connection()
-        if not conn: return
         try:
-            with conn.cursor() as cur:
-                cur.execute("SELECT id, nome_usuario, permissao, ativo FROM usuarios ORDER BY nome_usuario")
-                for row in cur.fetchall():
-                    status = "Ativo" if row[3] else "Inativo"
-                    values = (row[0], row[1], row[2], status)
-                    self.tree.insert("", END, values=values)
-        except psycopg2.Error as e:
+            users = get_manageable_users(self.permission)
+            for user in users:
+                status = "Ativo" if user['ativo'] else "Inativo"
+                values = (user['id'], user['nome_usuario'], user['permissao'], status)
+                self.tree.insert("", END, values=values)
+        except ServiceError as e:
             messagebox.showerror("Erro de Banco de Dados", f"Falha ao carregar usuários: {e}", parent=self)
-        finally:
-            if conn: release_db_connection(conn)
+
+    def get_allowed_permissions(self):
+        """Retorna a lista de permissões que o usuário atual pode atribuir."""
+        if self.permission == 'admin':
+            return ['admin', 'gerencial', 'qualidade', 'pcp', 'offset']
+        if self.permission == 'gerencial':
+            return ['gerencial', 'qualidade', 'pcp', 'offset']
+        if self.permission == 'qualidade':
+            return ['qualidade', 'offset']
+        return []
 
     def open_add_edit_dialog(self, edit_mode=False):
         """Abre uma janela para adicionar ou editar um usuário."""
@@ -105,7 +112,7 @@ class UserManagerWindow(Toplevel):
             user_entry.config(state="readonly")
 
         tb.Label(form_frame, text="Permissão:").grid(row=1, column=0, padx=5, pady=5, sticky=W)
-        perm_combo = tb.Combobox(form_frame, values=['admin', 'pcp', 'offset'], state="readonly")
+        perm_combo = tb.Combobox(form_frame, values=self.get_allowed_permissions(), state="readonly")
         perm_combo.grid(row=1, column=1, padx=5, pady=5, sticky=EW)
         if permission: perm_combo.set(permission)
         

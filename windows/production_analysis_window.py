@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*- 
 
-# dashboard_manager_view.py
+# production_analysis_window.py
 
 import tkinter as tk
 from tkinter import messagebox, Toplevel, W, CENTER, BOTH, YES, X, Y, RIGHT, VERTICAL, HORIZONTAL, BOTTOM, NSEW, N, filedialog
@@ -24,18 +24,18 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from database import get_db_connection, release_db_connection
 
 
-class DashboardManagerView(Toplevel):
+class ProductionAnalysisWindow(Toplevel):
     """
     Uma janela de dashboard estilo Power BI para a visão do gerente, com KPIs,
     gráficos interativos e dados detalhados da produção.
     """
     def __init__(self, master, db_config):
-        logging.debug("DashboardManagerView: __init__")
+        logging.debug("ProductionAnalysisWindow: __init__")
         super().__init__(master)
         self.master = master
         self.db_config = db_config
         
-        self.title("Dashboard do Gerente - Análise de Produção Completa")
+        self.title("Análise de Produção")
         self.geometry("1800x950") 
         self.state('zoomed') 
         self.grab_set()
@@ -47,10 +47,9 @@ class DashboardManagerView(Toplevel):
 
         self.create_widgets()
         self.load_filter_data()
-        # self.start_load_report_data() # A carga inicial é feita ao selecionar a fonte
 
     def get_db_connection(self):
-        logging.debug("DashboardManagerView: get_db_connection")
+        logging.debug("ProductionAnalysisWindow: get_db_connection")
         """
         Usa a função centralizada para obter a conexão com o banco de dados.
         """
@@ -61,7 +60,7 @@ class DashboardManagerView(Toplevel):
             return None
 
     def create_widgets(self):
-        logging.debug("DashboardManagerView: create_widgets")
+        logging.debug("ProductionAnalysisWindow: create_widgets")
         """Cria a estrutura principal da interface com painéis para filtros, KPIs e gráficos."""
         main_frame = tb.Frame(self, padding=15)
         main_frame.pack(fill=BOTH, expand=YES)
@@ -88,12 +87,10 @@ class DashboardManagerView(Toplevel):
 
         self.table_tab_frame = tb.Frame(self.notebook, padding=10)
         self.notebook.add(self.table_tab_frame, text=" Dados Detalhados ")
-        # A tabela agora é criada dinamicamente
 
     def create_filter_controls(self, parent_frame):
-        logging.debug("DashboardManagerView: create_filter_controls")
+        logging.debug("ProductionAnalysisWindow: create_filter_controls")
         """Cria os controles de filtro, agora com um seletor de fonte de dados."""
-        # --- Linha 0: Seletor da Fonte de Dados ---
         source_frame = tb.Frame(parent_frame)
         source_frame.pack(fill=X, expand=YES, pady=(0, 10))
         tb.Label(source_frame, text="Fonte de Dados:", font=("Helvetica", 10, "bold")).pack(side=LEFT, padx=(0, 5))
@@ -101,11 +98,9 @@ class DashboardManagerView(Toplevel):
         self.data_source_combobox.pack(side=LEFT, fill=X, expand=YES)
         self.data_source_combobox.bind("<<ComboboxSelected>>", self.on_data_source_changed)
 
-        # --- Container para filtros dinâmicos ---
         self.dynamic_filters_frame = tb.Frame(parent_frame)
         self.dynamic_filters_frame.pack(fill=X, expand=YES, pady=5)
 
-        # --- Botões ---
         buttons_frame = tb.Frame(parent_frame)
         buttons_frame.pack(fill=X, expand=YES, pady=(10, 0))
 
@@ -117,7 +112,6 @@ class DashboardManagerView(Toplevel):
         self.export_button.config(state=DISABLED)
 
     def on_data_source_changed(self, event=None):
-        """Chamado quando o usuário seleciona uma nova fonte de dados."""
         self.rebuild_dynamic_filters()
         source = self.data_source_combobox.get()
         if source == 'Relatório de Produção':
@@ -126,26 +120,22 @@ class DashboardManagerView(Toplevel):
         else:
             self.notebook.tab(0, state="disabled")
             self.kpi_frame.grid_remove()
-        # Recria a tabela com as colunas da nova fonte de dados
         self.create_detailed_table(self.table_tab_frame, table_name=source)
 
-
     def rebuild_dynamic_filters(self):
-        """Reconstrói os filtros baseados na fonte de dados selecionada."""
         for widget in self.dynamic_filters_frame.winfo_children():
             widget.destroy()
 
-        self.generic_filter_entries = {} # Reseta os filtros
+        self.generic_filter_entries = {}
 
         source = self.data_source_combobox.get()
         if source == 'Relatório de Produção':
             self.create_report_filters(self.dynamic_filters_frame)
             self.load_report_filter_data()
-        elif source: # Se qualquer outra tabela for selecionada
+        elif source:
             self.create_generic_filters(self.dynamic_filters_frame, source)
 
     def create_generic_filters(self, parent_frame, table_name):
-        """Cria filtros genéricos (Label + Entry) para cada coluna da tabela."""
         conn = self.get_db_connection()
         if not conn: return
         try:
@@ -158,7 +148,6 @@ class DashboardManagerView(Toplevel):
                 """, (table_name,))
                 columns = [row[0] for row in cur.fetchall()]
                 
-                # Creating a four-column layout for filters
                 frame = tb.Frame(parent_frame)
                 frame.pack(fill=X, expand=YES)
                 
@@ -172,7 +161,6 @@ class DashboardManagerView(Toplevel):
                     entry.grid(row=row, column=col + 1, padx=(0, 15), pady=2, sticky='we')
                     self.generic_filter_entries[col_name] = entry
                 
-                # Configure grid weights
                 for i in range(num_filter_cols * 2):
                     frame.grid_columnconfigure(i, weight=1 if i % 2 != 0 else 0)
 
@@ -183,7 +171,6 @@ class DashboardManagerView(Toplevel):
                 release_db_connection(conn)
 
     def create_report_filters(self, parent_frame):
-        """Cria os filtros específicos para o Relatório de Produção."""
         filter_row1 = tb.Frame(parent_frame)
         filter_row1.pack(fill=X, expand=YES, pady=5)
 
@@ -223,8 +210,7 @@ class DashboardManagerView(Toplevel):
         self.fsc_combobox.pack(side=LEFT, padx=(0, 15))
 
     def load_filter_data(self):
-        logging.debug("DashboardManagerView: load_filter_data")
-        """Carrega a lista de fontes de dados e os filtros para a visão padrão."""
+        logging.debug("ProductionAnalysisWindow: load_filter_data")
         conn = self.get_db_connection()
         if not conn: return
         try:
@@ -233,11 +219,12 @@ class DashboardManagerView(Toplevel):
                     SELECT table_name FROM information_schema.tables 
                     WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
                     ORDER BY table_name
-                """)
+                """
+                )
                 tables = [row[0] for row in cur.fetchall()]
                 self.data_source_combobox['values'] = ['Relatório de Produção'] + tables
                 self.data_source_combobox.set('Relatório de Produção')
-                self.on_data_source_changed() # Chama para configurar a UI inicial
+                self.on_data_source_changed()
         except Exception as e:
             messagebox.showerror("Erro", f"Não foi possível carregar fontes de dados: {e}", parent=self)
         finally:
@@ -245,7 +232,6 @@ class DashboardManagerView(Toplevel):
                 release_db_connection(conn)
 
     def load_report_filter_data(self):
-        """Carrega os dados para os comboboxes do relatório de produção."""
         conn = self.get_db_connection()
         if not conn: return
         try:
@@ -267,8 +253,7 @@ class DashboardManagerView(Toplevel):
                 release_db_connection(conn)
 
     def create_kpi_cards(self, parent_frame):
-        logging.debug("DashboardManagerView: create_kpi_cards")
-        """Cria os cartões para exibir os principais indicadores."""
+        logging.debug("ProductionAnalysisWindow: create_kpi_cards")
         kpi_specs = {
             "oee": {"title": "OEE (Eficiência Geral)", "value": "0.00%", "style": SUCCESS},
             "total_produzido": {"title": "Total Produzido", "value": "0", "style": PRIMARY},
@@ -291,8 +276,7 @@ class DashboardManagerView(Toplevel):
             setattr(self, f"kpi_{key}_label", value_label)
 
     def create_chart_placeholders(self, parent_frame):
-        logging.debug("DashboardManagerView: create_chart_placeholders")
-        """Cria os frames onde os gráficos serão desenhados."""
+        logging.debug("ProductionAnalysisWindow: create_chart_placeholders")
         f1 = tb.LabelFrame(parent_frame, text="Produção vs. Perdas por Máquina", bootstyle=DEFAULT, padding=5)
         f1.grid(row=0, column=0, sticky=NSEW, padx=5, pady=5)
         self.graph_canvas['machine_perf'] = tk.Frame(f1) 
@@ -314,8 +298,7 @@ class DashboardManagerView(Toplevel):
         self.graph_canvas['op_perf'].pack(fill=BOTH, expand=YES)
 
     def create_detailed_table(self, parent_frame, table_name=None):
-        logging.debug(f"DashboardManagerView: create_detailed_table for {table_name}")
-        """Cria a tabela para exibir dados, dinamicamente se necessário."""
+        logging.debug(f"ProductionAnalysisWindow: create_detailed_table for {table_name}")
         if hasattr(self, 'tree_container'):
             self.tree_container.destroy()
         
@@ -324,7 +307,6 @@ class DashboardManagerView(Toplevel):
         self.tree_container.grid_rowconfigure(0, weight=1)
         self.tree_container.grid_columnconfigure(0, weight=1)
 
-        # Se não houver fonte de dados, não faz nada
         if not table_name:
             return
 
@@ -333,11 +315,10 @@ class DashboardManagerView(Toplevel):
         try:
             with conn.cursor() as cur:
                 if table_name and table_name != 'Relatório de Produção':
-                    # Usando parâmetros para segurança
                     cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = %s ORDER BY ordinal_position;", (table_name,))
                     cols = [row[0] for row in cur.fetchall()]
                     headers = cols
-                else: # Default to report view
+                else:
                     cols = ('data_ordem', 'wo', 'cliente', 'servico', 'maquina', 'operador',
                             'tipo_papel', 'gramatura', 'fsc',
                             'meta_qtd', 'prod_qtd', 'saldo_qtd', 'perdas_setup', 'perdas_prod',
@@ -366,7 +347,7 @@ class DashboardManagerView(Toplevel):
                 release_db_connection(conn)
 
     def format_seconds_to_hhmmss(self, seconds):
-        logging.debug(f"DashboardManagerView: format_seconds_to_hhmmss with seconds: {seconds}")
+        logging.debug(f"ProductionAnalysisWindow: format_seconds_to_hhmmss with seconds: {seconds}")
         if pd.isna(seconds) or not isinstance(seconds, (int, float)) or seconds < 0:
             return "00:00:00"
         seconds = int(seconds)
@@ -375,8 +356,7 @@ class DashboardManagerView(Toplevel):
         return f"{hours:02}:{minutes:02}:{seconds:02}"
         
     def start_load_report_data(self):
-        logging.debug("DashboardManagerView: start_load_report_data")
-        """Inicia o carregamento dos dados em uma thread separada para não bloquear a UI."""
+        logging.debug("ProductionAnalysisWindow: start_load_report_data")
         self.filter_button.config(state=DISABLED)
         self.export_button.config(state=DISABLED)
         self.config(cursor="watch")
@@ -394,10 +374,9 @@ class DashboardManagerView(Toplevel):
         self.after(100, self._check_load_report_queue)
 
     def _background_load_report(self):
-        logging.debug("DashboardManagerView: _background_load_report")
-        """Esta função roda em uma thread separada para buscar e processar os dados."""
+        logging.debug("ProductionAnalysisWindow: _background_load_report")
         conn = None
-        self.df = pd.DataFrame() # Reseta o dataframe
+        self.df = pd.DataFrame()
         try:
             conn = self.get_db_connection()
             if not conn:
@@ -441,8 +420,7 @@ class DashboardManagerView(Toplevel):
                 release_db_connection(conn)
 
     def _check_load_report_queue(self):
-        logging.debug("DashboardManagerView: _check_load_report_queue")
-        """Verifica a fila de dados e atualiza a UI quando os dados estiverem prontos."""
+        logging.debug("ProductionAnalysisWindow: _check_load_report_queue")
         try:
             result = self.data_queue.get_nowait()
 
@@ -473,14 +451,12 @@ class DashboardManagerView(Toplevel):
             self.after(100, self._check_load_report_queue)
 
     def build_sql_query(self):
-        logging.debug("DashboardManagerView: build_sql_query")
-        """Constrói a consulta SQL com base nos filtros da interface, usando JOINS."""
-        
+        logging.debug("ProductionAnalysisWindow: build_sql_query")
         source = self.data_source_combobox.get()
         params = []
         
         if source == 'Relatório de Produção':
-            query = '''
+            query = """
                 SELECT
                     op.data_cadastro_pcp AS data_ordem,
                     op.numero_wo,
@@ -511,7 +487,7 @@ class DashboardManagerView(Toplevel):
                 LEFT JOIN tipos_papel tp ON op.tipo_papel_id = tp.id
                 LEFT JOIN gramaturas_tipos gt ON op.gramatura_id = gt.id
                 LEFT JOIN fsc_tipos ft ON op.fsc_id = ft.id
-            '''
+            """
             filters = []
             if hasattr(self, 'start_date_entry') and self.start_date_entry.entry.get():
                 try:
@@ -546,13 +522,12 @@ class DashboardManagerView(Toplevel):
                 query += " WHERE " + " AND ".join(filters)
             query += " ORDER BY op.data_cadastro_pcp DESC, op.numero_wo"
         else:
-            query = f'SELECT * FROM public."{source}"'
+            query = f'SELECT * FROM public.\"{source}\"'
             filters = []
             for col_name, entry_widget in self.generic_filter_entries.items():
                 value = entry_widget.get()
                 if value:
-                    # Cast to text to allow ILIKE on any data type
-                    filters.append(f'"{col_name}"::text ILIKE %s')
+                    filters.append(f'\"{col_name}\"::text ILIKE %s')
                     params.append(f"%{value}%")
             
             if filters:
@@ -561,8 +536,7 @@ class DashboardManagerView(Toplevel):
         return query, params
 
     def reset_dashboard(self):
-        logging.debug("DashboardManagerView: reset_dashboard")
-        """Limpa todos os dados da tela."""
+        logging.debug("ProductionAnalysisWindow: reset_dashboard")
         if hasattr(self, 'kpi_oee_label'):
             self.kpi_oee_label.config(text="0.00%")
             self.kpi_total_produzido_label.config(text="0")
@@ -578,8 +552,7 @@ class DashboardManagerView(Toplevel):
                 widget.destroy()
 
     def _calculate_kpis(self, df):
-        logging.debug("DashboardManagerView: _calculate_kpis")
-        """Calcula os KPIs a partir do DataFrame. Roda em background."""
+        logging.debug("ProductionAnalysisWindow: _calculate_kpis")
         total_produzido = df['prod_qtd'].sum()
         total_perdas_setup = df['perdas_setup'].sum()
         total_perdas_prod = df['perdas_prod'].sum()
@@ -606,8 +579,7 @@ class DashboardManagerView(Toplevel):
         }
 
     def _prepare_chart_data(self, df):
-        logging.debug("DashboardManagerView: _prepare_chart_data")
-        """Prepara os DataFrames para cada gráfico. Roda em background."""
+        logging.debug("ProductionAnalysisWindow: _prepare_chart_data")
         machine_data = df.groupby('maquina').agg(
             prod_qtd=('prod_qtd', 'sum'),
             perdas_total=('perdas_prod', lambda x: x.sum() + df.loc[x.index, 'perdas_setup'].sum())
@@ -634,8 +606,7 @@ class DashboardManagerView(Toplevel):
         }
 
     def _prepare_table_data(self, df):
-        logging.debug("DashboardManagerView: _prepare_table_data")
-        """Prepara os dados formatados para a tabela do relatório."""
+        logging.debug("ProductionAnalysisWindow: _prepare_table_data")
         table_rows = []
         for _, row in df.iterrows():
             saldo_qtd = (row['prod_qtd'] or 0) - (row['meta_qtd'] or 0)
@@ -662,16 +633,14 @@ class DashboardManagerView(Toplevel):
         return table_rows
 
     def update_kpis(self, kpi_data):
-        logging.debug("DashboardManagerView: update_kpis")
-        """Atualiza os valores nos cartões de KPI com dados pré-calculados."""
+        logging.debug("ProductionAnalysisWindow: update_kpis")
         self.kpi_oee_label.config(text=kpi_data["oee"])
         self.kpi_total_produzido_label.config(text=kpi_data["total_produzido"])
         self.kpi_total_perdas_label.config(text=kpi_data["total_perdas"])
         self.kpi_tempo_paradas_label.config(text=kpi_data["tempo_paradas"])
 
     def update_charts(self, chart_data):
-        logging.debug("DashboardManagerView: update_charts")
-        """Redesenha todos os gráficos com dados pré-agregados."""
+        logging.debug("ProductionAnalysisWindow: update_charts")
         self.draw_bar_chart(
             self.graph_canvas['machine_perf'], data=chart_data['machine_perf'], x_col='maquina',
             y_cols=['prod_qtd', 'perdas_total'], labels=['Produção', 'Perdas'],
@@ -695,30 +664,27 @@ class DashboardManagerView(Toplevel):
         )
 
     def update_detailed_table(self, data):
-        logging.debug("DashboardManagerView: update_detailed_table")
-        """Popula a tabela de dados detalhados com dados pré-formatados ou brutos."""
+        logging.debug("ProductionAnalysisWindow: update_detailed_table")
         for i in self.tree.get_children():
             self.tree.delete(i)
         
         if isinstance(data, pd.DataFrame):
-            # Limpa os dados antes de inserir novos
             for i in self.tree.get_children():
                 self.tree.delete(i)
-            # Converte todas as colunas do DataFrame para string para exibição segura
             df_str = data.astype(str).replace('nan', '')
             for row in df_str.itertuples(index=False, name=None):
                 self.tree.insert("", "end", values=row)
-        else: # Assume que são as linhas pré-formatadas do relatório
+        else:
             for values in data:
                 self.tree.insert("", "end", values=values)
     
     def _clear_canvas(self, canvas_frame):
-        logging.debug("DashboardManagerView: _clear_canvas")
+        logging.debug("ProductionAnalysisWindow: _clear_canvas")
         for widget in canvas_frame.winfo_children():
             widget.destroy()
 
     def draw_bar_chart(self, canvas_frame, data, x_col, y_cols, labels, title, colors):
-        logging.debug("DashboardManagerView: draw_bar_chart")
+        logging.debug("ProductionAnalysisWindow: draw_bar_chart")
         self._clear_canvas(canvas_frame)
         if data.empty: return
         
@@ -745,7 +711,7 @@ class DashboardManagerView(Toplevel):
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     def draw_line_chart(self, canvas_frame, data, x_col, y_col, title):
-        logging.debug("DashboardManagerView: draw_line_chart")
+        logging.debug("ProductionAnalysisWindow: draw_line_chart")
         self._clear_canvas(canvas_frame)
         if data.empty: return
 
@@ -762,7 +728,7 @@ class DashboardManagerView(Toplevel):
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     def draw_pie_chart(self, canvas_frame, data, labels_col, values_col, title):
-        logging.debug("DashboardManagerView: draw_pie_chart")
+        logging.debug("ProductionAnalysisWindow: draw_pie_chart")
         self._clear_canvas(canvas_frame)
         if data[values_col].sum() == 0: return
 
@@ -780,8 +746,7 @@ class DashboardManagerView(Toplevel):
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     def export_to_excel(self):
-        logging.debug("DashboardManagerView: export_to_excel")
-        """Exporta o conteúdo do DataFrame atual para um arquivo Excel."""
+        logging.debug("ProductionAnalysisWindow: export_to_excel")
         if self.df.empty:
             messagebox.showwarning("Nenhum Dado", "Não há dados para exportar.", parent=self)
             return

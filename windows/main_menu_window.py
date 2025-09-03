@@ -10,7 +10,7 @@ from ui_components import LookupTableManagerWindow
 from .production_app_window import App
 from .pcp_window import PCPWindow
 from .view_appointments_window import ViewAppointmentsWindow
-from .dashboard_manager_view import DashboardManagerView
+from .production_analysis_window import ProductionAnalysisWindow # <-- RENOMEADO
 from .user_manager_window import UserManagerWindow
 from .equipment_manager_window import EquipmentManagerWindow
 from .edit_appointments_window import EditAppointmentsWindow
@@ -52,28 +52,49 @@ class MenuPrincipalWindow(tb.Toplevel):
         btn_style = "primary-outline"
         btn_padding = {'pady': 8, 'padx': 20, 'ipadx': 10, 'ipady': 10}
         
-        tb.Button(main_frame, text=self.get_string('btn_production_entry'), bootstyle=btn_style, command=self.open_production_window).pack(fill=X, **btn_padding)
-        tb.Button(main_frame, text=self.get_string('btn_pcp_management'), bootstyle=btn_style, command=self.open_pcp_window).pack(fill=X, **btn_padding)
-        tb.Button(main_frame, text=self.get_string('btn_view_entries'), bootstyle=btn_style, command=self.open_view_window).pack(fill=X, **btn_padding)
+        # Botões visíveis para a maioria dos usuários
+        tb.Button(main_frame, text="Apontamento de Produção", bootstyle=btn_style, command=self.open_production_window).pack(fill=X, **btn_padding)
         
-        tb.Button(main_frame, text="Dashboard Gerencial", bootstyle="success-outline", command=self.open_manager_dashboard).pack(fill=X, **btn_padding)
+        if self.permission in ['admin', 'gerencial', 'pcp']:
+            tb.Button(main_frame, text="Gerenciamento PCP", bootstyle=btn_style, command=self.open_pcp_window).pack(fill=X, **btn_padding)
+        
+        if self.permission in ['admin', 'gerencial', 'qualidade', 'pcp']:
+            tb.Button(main_frame, text="Visualizar Apontamentos", bootstyle=btn_style, command=self.open_view_window).pack(fill=X, **btn_padding)
+        
+        if self.permission in ['admin', 'gerencial', 'qualidade']:
+            tb.Button(main_frame, text="Análise de Produção", bootstyle="success-outline", command=self.open_production_analysis).pack(fill=X, **btn_padding)
 
     def create_menu(self):
         self.menubar = tb.Menu(self)
-        
-        # Menu Configurações
-        config_menu = tb.Menu(self.menubar, tearoff=0)
-        config_menu.add_command(label=self.get_string('menu_db_config'), command=lambda: self.app_controller.open_configure_db_window(self))
-        config_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self, self.db_config, self.refresh_main_pcp_comboboxes))
-        config_menu.add_command(label=self.get_string('menu_manage_equipment'), command=self.open_equipment_manager)
-        config_menu.add_command(label="Gerenciar Usuários", command=self.open_user_manager)
-        self.menubar.add_cascade(label=self.get_string('menu_settings'), menu=config_menu)
 
-        # Menu Ferramentas (Apenas para Admins)
-        if self.permission == 'admin':
+        # --- Menu PCP ---
+        if self.permission in ['admin', 'gerencial']:
+            pcp_menu = tb.Menu(self.menubar, tearoff=0)
+            pcp_menu.add_command(label="Gerenciamento PCP", command=self.open_pcp_window)
+            self.menubar.add_cascade(label="PCP", menu=pcp_menu)
+
+        # --- Menu Ferramentas ---
+        if self.permission in ['admin', 'gerencial', 'qualidade']:
             tools_menu = tb.Menu(self.menubar, tearoff=0)
             tools_menu.add_command(label="Corrigir Apontamentos", command=self.open_edit_appointments_window)
             self.menubar.add_cascade(label="Ferramentas", menu=tools_menu)
+
+        # --- Menu Configurações ---
+        config_menu = tb.Menu(self.menubar, tearoff=0)
+        if self.permission == 'admin':
+            config_menu.add_command(label="Configurar Banco de Dados", command=lambda: self.app_controller.open_configure_db_window(self))
+        
+        if self.permission in ['admin', 'gerencial', 'qualidade']:
+            config_menu.add_command(label="Gerenciar Tabelas de Apoio", command=lambda: LookupTableManagerWindow(self, self.db_config, self.refresh_main_pcp_comboboxes))
+        
+        if self.permission == 'admin':
+             config_menu.add_command(label="Gerenciar Equipamentos", command=self.open_equipment_manager)
+
+        if self.permission in ['admin', 'gerencial', 'qualidade']:
+            config_menu.add_command(label="Gerenciar Usuários", command=self.open_user_manager)
+        
+        if config_menu.index('end') is not None:
+            self.menubar.add_cascade(label="Configurações", menu=config_menu)
 
         self.config(menu=self.menubar)
     
@@ -110,16 +131,16 @@ class MenuPrincipalWindow(tb.Toplevel):
         else:
             self.open_windows['view'].lift()
     
-    def open_manager_dashboard(self):
-        if 'dashboard' not in self.open_windows or not self.open_windows['dashboard'].winfo_exists():
-            self.open_windows['dashboard'] = DashboardManagerView(master=self, db_config=self.db_config)
-            self.open_windows['dashboard'].protocol("WM_DELETE_WINDOW", lambda: self.on_window_close('dashboard'))
+    def open_production_analysis(self):
+        if 'production_analysis' not in self.open_windows or not self.open_windows['production_analysis'].winfo_exists():
+            self.open_windows['production_analysis'] = ProductionAnalysisWindow(master=self, db_config=self.db_config)
+            self.open_windows['production_analysis'].protocol("WM_DELETE_WINDOW", lambda: self.on_window_close('production_analysis'))
         else:
-            self.open_windows['dashboard'].lift()
+            self.open_windows['production_analysis'].lift()
 
     def open_user_manager(self):
         if 'user_manager' not in self.open_windows or not self.open_windows['user_manager'].winfo_exists():
-            self.open_windows['user_manager'] = UserManagerWindow(master=self, db_config=self.db_config)
+            self.open_windows['user_manager'] = UserManagerWindow(master=self, db_config=self.db_config, permission=self.permission)
             self.open_windows['user_manager'].protocol("WM_DELETE_WINDOW", lambda: self.on_window_close('user_manager'))
         else:
             self.open_windows['user_manager'].lift()
