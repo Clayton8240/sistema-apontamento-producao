@@ -6,7 +6,7 @@ pip install -r requirements.txt
 echo.
 echo Criando o executavel com PyInstaller...
 
-pyinstaller --name "SistemaApontaMentor 1.1 BETA" ^
+pyinstaller --name "SistemaApontaMentor 1.2 BETA" ^
             --onefile ^
             --windowed ^
             --icon="icon.ico" ^

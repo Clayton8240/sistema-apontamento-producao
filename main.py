@@ -28,6 +28,7 @@ class AppController:
         self.root.attributes("-alpha",0) # torna a janela raiz invisível
         self.db_config = self.load_db_config()
         self.main_window = None
+        self.user_permission = None # Adicionado para armazenar a permissão
 
     def load_db_config(self):
         logging.debug("AppController: load_db_config")
@@ -68,6 +69,7 @@ class AppController:
         logging.debug(f"AppController: on_login_success - permission: {permission}")
         """Chamado pela LoginWindow após um login bem-sucedido."""
         self.db_config = db_config
+        self.user_permission = permission # Armazena a permissão
         
         # Destrói a janela de login atual para abrir a próxima
         for widget in self.root.winfo_children():
@@ -77,11 +79,11 @@ class AppController:
         try:
             initialize_connection_pool(self.db_config)
             
-            if permission == 'admin':
-                self.main_window = MenuPrincipalWindow(self.root, self, self.db_config)
-            elif permission == 'pcp':
+            if self.user_permission == 'admin':
+                self.main_window = MenuPrincipalWindow(self.root, self, self.db_config, self.user_permission)
+            elif self.user_permission == 'pcp':
                 self.main_window = PCPWindow(self.root, self.db_config)
-            elif permission == 'offset':
+            elif self.user_permission == 'offset':
                 self.main_window = App(self.root, self.db_config)
             else:
                 raise ValueError("Permissão de utilizador inválida.")
@@ -103,6 +105,7 @@ class AppController:
         logging.info("Encerrando a aplicação.")
         close_connection_pool()
         self.root.destroy()
+
 
 
 if __name__ == "__main__":

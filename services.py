@@ -379,3 +379,123 @@ def remove_equipment_type_field(equipamento_type_id, field_id):
     finally:
         if conn:
             release_db_connection(conn)
+
+# --- Appointments Services ---
+def get_appointments_for_editing():
+    """
+    Busca todos os apontamentos com detalhes para edição.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                SELECT
+                    a.id,
+                    a.servico_id,
+                    op.numero_wo,
+                    os.descricao AS servico,
+                    i.nome AS operador,
+                    a.data,
+                    a.horainicio,
+                    a.horafim,
+                    a.giros_rodados,
+                    a.quantidadeproduzida,
+                    a.perdas_producao,
+                    a.ocorrencias,
+                    a.impressor_id,
+                    a.turno_id,
+                    a.motivo_perda_id
+                FROM apontamento a
+                JOIN ordem_servicos os ON a.servico_id = os.id
+                JOIN ordem_producao op ON os.ordem_id = op.id
+                LEFT JOIN impressores i ON a.impressor_id = i.id
+                ORDER BY a.data DESC, a.horainicio DESC;
+            """
+            cur.execute(query)
+            columns = [col[0] for col in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
+    except (Exception, psycopg2.Error) as e:
+        logging.error(f"Erro ao buscar apontamentos para edição: {e}")
+        raise ServiceError(f"Erro ao buscar apontamentos para edição: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def update_appointment(appointment_id, data):
+    """
+    Atualiza um apontamento existente.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                UPDATE apontamento
+                SET
+                    data = %(data)s,
+                    horainicio = %(horainicio)s,
+                    horafim = %(horafim)s,
+                    giros_rodados = %(giros_rodados)s,
+                    quantidadeproduzida = %(quantidadeproduzida)s,
+                    perdas_producao = %(perdas_producao)s,
+                    ocorrencias = %(ocorrencias)s,
+                    impressor_id = %(impressor_id)s,
+                    turno_id = %(turno_id)s,
+                    motivo_perda_id = %(motivo_perda_id)s
+                WHERE id = %(id)s;
+            """
+            data['id'] = appointment_id
+            cur.execute(query, data)
+            conn.commit()
+            logging.debug(f"Apontamento atualizado com ID: {appointment_id}")
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao atualizar apontamento: {e}")
+        raise ServiceError(f"Erro ao atualizar apontamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def delete_appointment(appointment_id):
+    """
+    Deleta um apontamento.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = "DELETE FROM apontamento WHERE id = %s;"
+            cur.execute(query, (appointment_id,))
+            conn.commit()
+            logging.debug(f"Apontamento deletado com ID: {appointment_id}")
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao deletar apontamento: {e}")
+        raise ServiceError(f"Erro ao deletar apontamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def finish_service(service_id):
+    """
+    Finaliza um serviço, mudando seu status para 'Concluído'.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = "UPDATE ordem_servicos SET status = 'Concluído' WHERE id = %s;"
+            cur.execute(query, (service_id,))
+            conn.commit()
+            logging.debug(f"Serviço finalizado com ID: {service_id}")
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao finalizar serviço: {e}")
+        raise ServiceError(f"Erro ao finalizar serviço: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)

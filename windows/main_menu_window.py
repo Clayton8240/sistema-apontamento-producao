@@ -11,15 +11,17 @@ from .production_app_window import App
 from .pcp_window import PCPWindow
 from .view_appointments_window import ViewAppointmentsWindow
 from .dashboard_manager_view import DashboardManagerView
-from .user_manager_window import UserManagerWindow # <-- NOVA IMPORTAÇÃO
-from .equipment_manager_window import EquipmentManagerWindow # <-- NOVA IMPORTAÇÃO
+from .user_manager_window import UserManagerWindow
+from .equipment_manager_window import EquipmentManagerWindow
+from .edit_appointments_window import EditAppointmentsWindow
 from database import get_db_connection, release_db_connection
 
 class MenuPrincipalWindow(tb.Toplevel):
-    def __init__(self, master, app_controller, db_config):
+    def __init__(self, master, app_controller, db_config, permission):
         super().__init__(master)
         self.app_controller = app_controller
         self.db_config = db_config
+        self.permission = permission
         self.current_language = self.db_config.get('language', 'portugues')
         self.set_localized_title()
         self.geometry("600x450")
@@ -58,14 +60,21 @@ class MenuPrincipalWindow(tb.Toplevel):
 
     def create_menu(self):
         self.menubar = tb.Menu(self)
+        
+        # Menu Configurações
         config_menu = tb.Menu(self.menubar, tearoff=0)
         config_menu.add_command(label=self.get_string('menu_db_config'), command=lambda: self.app_controller.open_configure_db_window(self))
         config_menu.add_command(label=self.get_string('menu_manage_lookup'), command=lambda: LookupTableManagerWindow(self, self.db_config, self.refresh_main_pcp_comboboxes))
         config_menu.add_command(label=self.get_string('menu_manage_equipment'), command=self.open_equipment_manager)
-        
         config_menu.add_command(label="Gerenciar Usuários", command=self.open_user_manager)
-
         self.menubar.add_cascade(label=self.get_string('menu_settings'), menu=config_menu)
+
+        # Menu Ferramentas (Apenas para Admins)
+        if self.permission == 'admin':
+            tools_menu = tb.Menu(self.menubar, tearoff=0)
+            tools_menu.add_command(label="Corrigir Apontamentos", command=self.open_edit_appointments_window)
+            self.menubar.add_cascade(label="Ferramentas", menu=tools_menu)
+
         self.config(menu=self.menubar)
     
     def refresh_main_pcp_comboboxes(self):
@@ -73,6 +82,13 @@ class MenuPrincipalWindow(tb.Toplevel):
             self.open_windows['pcp'].load_all_combobox_data()
 
     # --- FUNÇÕES PARA ABRIR JANELAS (open_..._window) ---
+    def open_edit_appointments_window(self):
+        if 'edit_appointments' not in self.open_windows or not self.open_windows['edit_appointments'].winfo_exists():
+            self.open_windows['edit_appointments'] = EditAppointmentsWindow(master=self)
+            self.open_windows['edit_appointments'].protocol("WM_DELETE_WINDOW", lambda: self.on_window_close('edit_appointments'))
+        else:
+            self.open_windows['edit_appointments'].lift()
+
     def open_production_window(self):
         if 'production' not in self.open_windows or not self.open_windows['production'].winfo_exists():
             self.open_windows['production'] = App(master=self, db_config=self.db_config)
