@@ -119,11 +119,27 @@ class ProductionTab(tb.Frame):
                         widget.configure(bootstyle=style.replace('danger', ''))
 
     def create_widgets(self):
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.canvas = Canvas(self, highlightthickness=0)
+        self.scrollbar = tb.Scrollbar(self, orient=VERTICAL, command=self.canvas.yview)
+        self.scrollable_frame = tb.Frame(self.canvas)
 
-        left_column_frame = tb.Frame(self)
+        self.scrollable_frame.bind("<Configure>", self._on_frame_configure)
+
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.scrollbar.grid(row=0, column=1, sticky="ns")
+
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+
+        # Configure the grid of the scrollable_frame to match the original ProductionTab layout
+        self.scrollable_frame.grid_columnconfigure(0, weight=1)
+        self.scrollable_frame.grid_columnconfigure(1, weight=1)
+        self.scrollable_frame.grid_rowconfigure(1, weight=1)
+
+        left_column_frame = tb.Frame(self.scrollable_frame)
         left_column_frame.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(PAD_X, PAD_Y), pady=PAD_Y)
         left_column_frame.grid_rowconfigure(1, weight=1)
 
@@ -216,7 +232,7 @@ class ProductionTab(tb.Frame):
         self.prod_stop_button = tb.Button(prod_control_frame, text=self.get_string('point_prod_stop_btn'), command=lambda: self.open_stop_window('production'), state=DISABLED, width=20)
         self.prod_stop_button.pack(pady=PAD_Y, ipady=PAD_Y)
 
-        right_column_frame = tb.Frame(self)
+        right_column_frame = tb.Frame(self.scrollable_frame)
         right_column_frame.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=(PAD_Y, PAD_X), pady=PAD_Y)
         right_column_frame.grid_rowconfigure(1, weight=1)
 
@@ -250,14 +266,14 @@ class ProductionTab(tb.Frame):
         details_button = tb.Button(stops_frame, text="Ver Detalhes das Paradas", command=self.view_stop_details)
         details_button.grid(row=1, column=0, columnspan=2, pady=PAD_Y)
         
-        footer_frame = tb.Frame(self)
+        footer_frame = tb.Frame(self.scrollable_frame)
         footer_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
         footer_frame.grid_columnconfigure(0, weight=1)
 
         self.final_register_button = tb.Button(footer_frame, text=self.get_string("register_entry_btn"), command=self.submit_final_production, state=DISABLED)
         self.final_register_button.pack(pady=PAD_Y_XXL, ipady=PAD_Y_LARGE)
         
-        status_bar = tb.Frame(self)
+        status_bar = tb.Frame(self.scrollable_frame)
         status_bar.grid(row=3, column=0, columnspan=2, sticky="ew", padx=PAD_X, pady=(0, PAD_Y))
         tb.Label(status_bar, text="Status:", font="-size 12 -weight bold").pack(side=LEFT)
         self.status_label = tb.Label(status_bar, text=self.get_string('status_idle'), font="-size 12 -weight bold", bootstyle="secondary")
@@ -685,6 +701,10 @@ class ProductionTab(tb.Frame):
         hours, remainder = divmod(int(seconds), 3600)
         minutes, seconds = divmod(remainder, 60)
         return f"{hours:02}:{minutes:02}:{seconds:02}"
+
+    def _on_frame_configure(self, event):
+        """Update the scrollregion of the canvas when the scrollable_frame changes size."""
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
 class RealTimeStopWindow(Toplevel):
     def __init__(self, master, db_config, stop_callback):
