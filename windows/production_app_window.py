@@ -1,11 +1,11 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*- 
 
 from datetime import datetime, time, date
 import psycopg2
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from tkinter import messagebox, Canvas, Toplevel, END, W, E, S, N, CENTER, BOTH, YES, X, Y, LEFT, RIGHT, DISABLED, NORMAL, VERTICAL
-from tkinter.ttk import Treeview
+from tkinter.ttk import Treeview, Notebook
 
 from languages import LANGUAGES
 from schemas import LOOKUP_TABLE_SCHEMAS
@@ -78,20 +78,15 @@ class StopDetailsWindow(Toplevel):
             values = (stop.get('type', ''), motivo_display, start_str, end_str, duration_str)
             self.tree.insert("", END, values=values)
 
-class App(Toplevel):
-    def __init__(self, master, db_config):
+class ProductionTab(tb.Frame):
+    """Represents a single tab for one production entry."""
+    def __init__(self, master, db_config, app_controller):
         super().__init__(master)
-        self.master = master
         self.db_config = db_config
+        self.app_controller = app_controller # Reference to the main App
         self.current_language = self.db_config.get('language', 'portugues')
 
-        self.transient(master)
-        self.focus_set()
-
-        self.set_localized_title()
-        self.state('zoomed')
-        self.wm_minsize(1280, 720)
-
+        # All state variables from the old App class are moved here
         self.current_state = 'IDLE'
         self.setup_start_time, self.setup_end_time = None, None
         self.prod_start_time, self.prod_end_time = None, None
@@ -100,30 +95,22 @@ class App(Toplevel):
         self.selected_ordem_id, self.selected_servico_id, self.setup_id = None, None, None
         self.pending_services_data, self.motivos_perda_data, self.giros_map = {}, {}, {}
         self.initial_fields, self.setup_fields, self.production_fields, self.info_labels = {}, {}, {}, {}
-
+        
         self.create_widgets()
         self.load_initial_data()
-
-        self.after(100, self.check_and_restore_state_from_db)
-        self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.update_ui_state()
 
     def get_string(self, key, **kwargs):
         lang_dict = LANGUAGES.get(self.current_language, LANGUAGES.get('portugues', {}))
         return lang_dict.get(key, f"_{key}_").format(**kwargs)
 
-    def set_localized_title(self):
-        self.title(self.get_string('btn_production_entry'))
-
     def _clear_field_highlights(self):
-        """Remove o destaque de erro de todos os campos de entrada."""
         all_fields = list(self.initial_fields.values()) + \
                      list(self.setup_fields.values()) + \
                      list(self.production_fields.values())
         
         for widget in all_fields:
-            if widget is None: # Adiciona verificação para None
-                continue
-            # Verifica se o widget tem o método cget e se 'bootstyle' é uma opção válida
+            if widget is None: continue
             if hasattr(widget, 'cget'):
                 config_options = widget.configure()
                 if config_options is not None and 'bootstyle' in config_options:
@@ -132,12 +119,10 @@ class App(Toplevel):
                         widget.configure(bootstyle=style.replace('danger', ''))
 
     def create_widgets(self):
-        # --- Configuração do Grid Principal ---
-        self.grid_columnconfigure(0, weight=1) # Coluna Esquerda
-        self.grid_columnconfigure(1, weight=1) # Coluna Direita
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(1, weight=1)
 
-        # --- COLUNA ESQUERDA ---
         left_column_frame = tb.Frame(self)
         left_column_frame.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(PAD_X, PAD_Y), pady=PAD_Y)
         left_column_frame.grid_rowconfigure(1, weight=1)
@@ -231,7 +216,6 @@ class App(Toplevel):
         self.prod_stop_button = tb.Button(prod_control_frame, text=self.get_string('point_prod_stop_btn'), command=lambda: self.open_stop_window('production'), state=DISABLED, width=20)
         self.prod_stop_button.pack(pady=PAD_Y, ipady=PAD_Y)
 
-        # --- COLUNA DIREITA ---
         right_column_frame = tb.Frame(self)
         right_column_frame.grid(row=0, column=1, rowspan=2, sticky="nsew", padx=(PAD_Y, PAD_X), pady=PAD_Y)
         right_column_frame.grid_rowconfigure(1, weight=1)
@@ -266,7 +250,6 @@ class App(Toplevel):
         details_button = tb.Button(stops_frame, text="Ver Detalhes das Paradas", command=self.view_stop_details)
         details_button.grid(row=1, column=0, columnspan=2, pady=PAD_Y)
         
-        # --- RODAPÉ ---
         footer_frame = tb.Frame(self)
         footer_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
         footer_frame.grid_columnconfigure(0, weight=1)
@@ -313,7 +296,6 @@ class App(Toplevel):
 
     def update_wo_info_panel(self):
         if not self.selected_servico_id: return
-        print(f"DEBUG: selected_servico_id: {self.selected_servico_id}") # Added debug print
         self.set_cursor_watch()
         try:
             conn = get_db_connection()
@@ -333,7 +315,6 @@ class App(Toplevel):
                 """
                 cur.execute(sql, (self.selected_servico_id,))
                 result = cur.fetchone()
-                print(f"DEBUG: Query result: {result}") # Added debug print
                 if result:
                     wo_num, cliente, equip, papel, giros, tiragem, tempo_ms, cores_desc = result
                     self.cores_desc = cores_desc
@@ -346,6 +327,7 @@ class App(Toplevel):
                     for key, value in info_map.items():
                         if key in self.info_labels:
                             self.info_labels[key].config(text=value if value is not None else '')
+                    self.app_controller.update_tab_title(self, f"WO {wo_num}")
         except Exception as e:
             messagebox.showerror("Erro de Banco de Dados", f"Erro ao buscar informações do serviço:\n{e}", parent=self)
         finally:
@@ -496,8 +478,7 @@ class App(Toplevel):
                 cur.execute("UPDATE ordem_servicos SET status = 'Concluído' WHERE id = %s", (self.selected_servico_id,))
             conn.commit()
             messagebox.showinfo("Sucesso", "Apontamento finalizado e registrado com sucesso!", parent=self)
-            self.reset_state()
-            self.destroy()
+            self.app_controller.close_tab(self)
         except Exception as e:
             if conn: conn.rollback()
             messagebox.showerror("Erro ao Finalizar Apontamento", f"Ocorreu um erro inesperado:\n{e}", parent=self)
@@ -505,8 +486,11 @@ class App(Toplevel):
             if conn: release_db_connection(conn)
             self.set_cursor_default()
 
-    def on_close(self):
-        self.destroy()
+    def close_tab(self):
+        if self.current_state not in ['IDLE', 'FINISHED']:
+            if not messagebox.askyesno(self.get_string('confirm_close_title'), self.get_string('confirm_close_msg'), parent=self):
+                return
+        self.app_controller.close_tab(self)
 
     def update_ui_state(self):
         state = self.current_state
@@ -546,77 +530,6 @@ class App(Toplevel):
         status_key, bootstyle = status_map.get(state, ('status_idle', 'secondary'))
         self.status_label.config(text=self.get_string(status_key), bootstyle=bootstyle)
 
-    def check_and_restore_state_from_db(self):
-        self.set_cursor_watch()
-        conn = None
-        try:
-            conn = get_db_connection()
-            with conn.cursor() as cur:
-                query_setup = "SELECT s.id, s.servico_id, s.hora_inicio FROM apontamento_setup s JOIN ordem_servicos os ON s.servico_id = os.id WHERE s.hora_fim IS NULL ORDER BY s.hora_inicio DESC LIMIT 1;"
-                cur.execute(query_setup)
-                setup_aberto = cur.fetchone()
-                if setup_aberto:
-                    setup_id, servico_id, hora_inicio = setup_aberto
-                    msg = self.get_string('restore_session_prompt', servico_id=servico_id)
-                    if messagebox.askyesno(self.get_string('restore_session_title'), msg):
-                        self.selected_servico_id = servico_id
-                        self.setup_id = setup_id
-                        self.setup_start_time = hora_inicio
-                        self.current_state = 'SETUP_RUNNING'
-                        self.load_data_for_restored_service()
-                        self.update_setup_timer()
-                        self.update_ui_state()
-                        return
-        except psycopg2.Error as e:
-            messagebox.showerror(self.get_string('error_title'), self.get_string('db_restore_failed', error=e), parent=self)
-        finally:
-            if conn: release_db_connection(conn)
-            self.set_cursor_default()
-            if self.current_state == 'IDLE': self.update_ui_state()
-
-    def load_data_for_restored_service(self):
-        """
-        Carrega e seleciona os dados de equipamento e serviço para uma sessão restaurada.
-        """
-        if not self.selected_servico_id:
-            return
-
-        self.set_cursor_watch()
-        conn = None
-        try:
-            conn = get_db_connection()
-            with conn.cursor() as cur:
-                query = """
-                    SELECT opm.equipamento_id, os.descricao, op.numero_wo
-                    FROM ordem_servicos os
-                    JOIN ordem_producao_maquinas opm ON os.maquina_id = opm.id
-                    JOIN ordem_producao op ON os.ordem_id = op.id
-                    WHERE os.id = %s;
-                """
-                cur.execute(query, (self.selected_servico_id,))
-                result = cur.fetchone()
-                if not result:
-                    return
-
-                equipamento_id, servico_desc, wo_num = result
-
-                equip_name = next((name for name, eid in self.equipments_data.items() if eid == equipamento_id), None)
-                
-                if equip_name:
-                    self.equipment_combobox.set(equip_name)
-                    self.on_equipment_select()
-                    service_full_text = f"{wo_num}: {servico_desc}"
-                    if service_full_text in self.pending_services_data:
-                        self.service_combobox.set(service_full_text)
-                    self.update_wo_info_panel()
-
-        except Exception as e:
-            messagebox.showerror(self.get_string('error_title'), f"Erro ao restaurar dados do serviço: {e}", parent=self)
-        finally:
-            if conn:
-                release_db_connection(conn)
-            self.set_cursor_default()
-        
     def reset_state(self):
         self.current_state = 'IDLE'
         self.setup_start_time, self.setup_end_time = None, None
@@ -883,4 +796,107 @@ class RealTimeStopWindow(Toplevel):
         }
         
         self.stop_callback(stop_data)
+        self.destroy()
+
+class App(Toplevel):
+    """The main application window, now managing multiple ProductionTab instances."""
+    def __init__(self, master, db_config):
+        super().__init__(master)
+        self.master = master
+        self.db_config = db_config
+        self.current_language = self.db_config.get('language', 'portugues')
+
+        self.transient(master)
+        self.focus_set()
+
+        self.title(self.get_string('btn_production_entry'))
+        self.state('zoomed')
+        self.wm_minsize(1280, 720)
+
+        self.notebook = Notebook(self)
+        self.notebook.pack(expand=True, fill=BOTH, padx=5, pady=5)
+
+        self.tabs = []
+        self.plus_tab_id = None
+
+        self.add_new_tab()
+        self.add_plus_tab()
+
+        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def get_string(self, key, **kwargs):
+        lang_dict = LANGUAGES.get(self.current_language, LANGUAGES.get('portugues', {}))
+        return lang_dict.get(key, f"_{key}_").format(**kwargs)
+
+    def add_new_tab(self, select_new_tab=True):
+        if len(self.tabs) >= 3:
+            messagebox.showwarning(self.get_string('limit_reached_title'), self.get_string('max_tabs_limit_msg', limit=3), parent=self)
+            if self.tabs:
+                self.notebook.select(self.tabs[-1])
+            return None
+
+        tab_frame = ProductionTab(self.notebook, self.db_config, self)
+        self.tabs.append(tab_frame)
+        
+        # Insert before the '+' tab if it exists, otherwise just add to the end
+        if self.plus_tab_id:
+            try:
+                insert_index = self.notebook.index(self.plus_tab_id)
+                self.notebook.insert(insert_index, tab_frame, text=self.get_string('new_entry_tab_title'))
+            except Exception:
+                self.notebook.add(tab_frame, text=self.get_string('new_entry_tab_title'))
+        else:
+            self.notebook.add(tab_frame, text=self.get_string('new_entry_tab_title'))
+
+        if select_new_tab:
+            self.notebook.select(tab_frame)
+        return tab_frame
+
+    def add_plus_tab(self):
+        if self.plus_tab_id:
+            try:
+                self.notebook.forget(self.plus_tab_id)
+            except Exception:
+                pass
+        
+        plus_frame = tb.Frame(self.notebook)
+        self.notebook.add(plus_frame, text=" + ")
+        self.plus_tab_id = str(plus_frame)
+        
+        if self.tabs:
+            self.notebook.select(self.tabs[0])
+
+    def on_tab_changed(self, event):
+        try:
+            selected_tab_id = self.notebook.select()
+            if not selected_tab_id:
+                return
+            if self.plus_tab_id and selected_tab_id == self.plus_tab_id:
+                # Automatically select the last real tab before opening a new one
+                if self.tabs:
+                    self.notebook.select(self.tabs[-1])
+                self.add_new_tab()
+        except Exception:
+            pass
+
+    def update_tab_title(self, tab_frame, new_title):
+        try:
+            self.notebook.tab(tab_frame, text=new_title)
+        except Exception:
+            pass # Tab might already be closed
+
+    def close_tab(self, tab_frame):
+        self.notebook.forget(tab_frame)
+        self.tabs.remove(tab_frame)
+        
+        if not self.tabs:
+            self.destroy()
+
+    def on_close(self):
+        for tab in list(self.tabs): # Iterate over a copy
+            if tab.current_state not in ['IDLE', 'FINISHED']:
+                if not messagebox.askyesno(self.get_string('confirm_close_title'), self.get_string('confirm_close_all_msg'), parent=self):
+                    return
+                break
         self.destroy()

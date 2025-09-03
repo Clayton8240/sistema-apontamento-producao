@@ -93,6 +93,7 @@ LANGUAGES = {
         'service_on_machine_queue_label': 'Serviço na Fila da Máquina:',
         'order_status_label': 'Status Ordem:',
         'wo_tracking_label': 'Acompanhamento da WO:',
+        'new_entry_tab_title': 'Apontamento',
 
         # Seções de Tela (LabelFrame)
         'form_data_section': 'Dados',
@@ -431,6 +432,7 @@ LANGUAGES = {
         'col_prod_end': 'Prod. End',
         'col_perdas': 'White papers used in Setup',
         'col_malas': 'Reusing paper in the setup',
+        'new_entry_tab_title': 'Window',
 
         # Menus
         'menu_settings': 'Settings',
