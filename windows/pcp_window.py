@@ -82,7 +82,6 @@ class PCPWindow(tb.Toplevel):
         
         self.create_widgets()
         self.load_all_combobox_data()
-        # self.start_load_ordens() # Moved to create_widgets after tree initialization
 
     def get_string(self, key, **kwargs):
         lang_dict = LANGUAGES.get(self.current_language, LANGUAGES['portugues'])
@@ -192,10 +191,11 @@ class PCPWindow(tb.Toplevel):
         action_frame = tb.Frame(main_frame)
         action_frame.pack(fill=X, pady=15)
         
+        # Ocultamos os botões de subir e descer, pois a funcionalidade agora é de arrastar e soltar.
         self.move_up_button = tb.Button(action_frame, text="Subir na Fila", command=self.move_order_up, bootstyle="primary-outline", state=DISABLED)
-        self.move_up_button.pack(side='left', padx=5)
+        # self.move_up_button.pack(side='left', padx=5)
         self.move_down_button = tb.Button(action_frame, text="Descer na Fila", command=self.move_order_down, bootstyle="primary-outline", state=DISABLED)
-        self.move_down_button.pack(side='left', padx=(0, 20))
+        # self.move_down_button.pack(side='left', padx=(0, 20))
         
         self.edit_button = tb.Button(action_frame, text="✏️ Alterar Ordem Selecionada", command=self.open_edit_window, bootstyle="info-outline", state=DISABLED)
         self.edit_button.pack(side='left', padx=5)
@@ -212,17 +212,21 @@ class PCPWindow(tb.Toplevel):
         orders_tree_frame = tb.LabelFrame(main_frame, text="Ordens de Produção Criadas", bootstyle=INFO, padding=10)
         orders_tree_frame.pack(fill=BOTH, expand=True, pady=10)
         
-        cols_orders = ("sequencia", "id", "wo", "cliente", "progresso", "data_previsao", "status_atraso")
-        headers_orders = ("Seq.", "ID", "WO", "Cliente", "Progresso da Produção", "Data Prev.", "Status Atraso")
+        cols_orders = ("sequencia", "id", "pn_partnumber", "wo", "cliente", "progresso", "data_previsao", "status_atraso")
+        headers_orders = ("Seq.", "PN (Partnumber)", "WO", "Cliente", "Progresso da Produção", "Data Prev.", "Status Atraso")
         
         self.tree = tb.Treeview(orders_tree_frame, columns=cols_orders, show="headings", bootstyle=PRIMARY)
-        for col, header in zip(cols_orders, headers_orders):
+
+        # Define which columns are visible and set their headers
+        visible_cols = [col for col in cols_orders if col != 'id']
+        for col, header in zip(visible_cols, headers_orders):
             self.tree.heading(col, text=header)
             self.tree.column(col, width=120, anchor='w')
-
+            
+        self.tree.column("id", width=0, stretch=False) # Oculta a coluna ID
         self.tree.column("progresso", width=250, anchor='w')
         self.tree.column("sequencia", width=40, anchor=CENTER)
-        self.tree.column("id", width=50, anchor=CENTER)
+        self.tree.column("pn_partnumber", width=150, anchor='w')
         self.tree.column("status_atraso", width=100, anchor=CENTER)
 
         self.tree.tag_configure('atrasado', foreground='red', font=('-weight bold'))
@@ -233,8 +237,64 @@ class PCPWindow(tb.Toplevel):
         self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
 
-        # Call start_load_ordens after self.tree is initialized
+        # Adiciona os bindings para o drag and drop
+        self.tree.bind("<ButtonPress-1>", self.on_drag_start)
+        self.tree.bind("<B1-Motion>", self.on_drag_motion)
+        self.tree.bind("<ButtonRelease-1>", self.on_drag_end)
+        self._drag_data = {"item": None, "y": 0}
+
         self.start_load_ordens()
+
+    def on_drag_start(self, event):
+        item = self.tree.identify_row(event.y)
+        if item:
+            self.tree.selection_set(item)
+            self._drag_data["item"] = item
+            self._drag_data["y"] = event.y
+
+    def on_drag_motion(self, event):
+        # Este método é mantido para futuras melhorias (ex: exibir um indicador visual),
+        # mas a lógica de mover o item foi centralizada no on_drag_end para mais controle.
+        pass
+
+    def on_drag_end(self, event):
+        if not self._drag_data["item"]:
+            return
+
+        dragged_item = self._drag_data["item"]
+        destination_item = self.tree.identify_row(event.y)
+        
+        # Só move e atualiza o banco se o item for solto em um novo local válido
+        if destination_item and dragged_item != destination_item:
+            self.tree.move(dragged_item, self.tree.parent(dragged_item), self.tree.index(destination_item))
+            # A atualização do banco de dados agora só ocorre se houver uma mudança real
+            self.update_sequence_from_tree()
+        
+        self._drag_data["item"] = None # Reseta o estado do arraste
+
+
+    def update_sequence_from_tree(self):
+        new_sequence = {}
+        for i, item_id in enumerate(self.tree.get_children()):
+            item_data = self.tree.item(item_id)
+            # A coluna "id" não está mais visível, mas os dados ainda estão nos valores
+            ordem_id = item_data['values'][1] 
+            new_sequence[ordem_id] = i + 1
+
+        conn = None
+        try:
+            conn = get_db_connection()
+            with conn.cursor() as cur:
+                for ordem_id, seq in new_sequence.items():
+                    cur.execute("UPDATE ordem_producao SET sequencia_producao = %s WHERE id = %s", (seq, ordem_id))
+            conn.commit()
+            # Opcional: Recarregar as ordens para garantir a consistência
+            self.start_load_ordens()
+        except Exception as e:
+            if conn: conn.rollback()
+            messagebox.showerror("Erro ao Reordenar", f"Não foi possível alterar a sequência: {e}", parent=self)
+        finally:
+            if conn: release_db_connection(conn)
 
     def update_machine_fields(self, event=None):
         for widget in self.machine_dynamic_frame.winfo_children():
@@ -271,12 +331,8 @@ class PCPWindow(tb.Toplevel):
             self.machine_dynamic_widgets[field_config["nome_campo"]] = widget
             
             if config["lookup"]:
-                # Load data for comboboxes dynamically
                 if config["lookup"] == "qtde_cores_tipos":
                     widget['values'] = list(self.cores_map.keys())
-                    # Removed the binding here as giros calculation is now based on material details
-                    # if field_config['nome_campo'] == 'qtde_cores_id':
-                    #     widget.bind("<<ComboboxSelected>>", self._calcular_giros_para_maquina)
 
     def create_widget_from_config(self, parent, config):
         if config.get("widget") == "Combobox": return tb.Combobox(parent, state="readonly")
@@ -291,7 +347,6 @@ class PCPWindow(tb.Toplevel):
                 cur.execute('SELECT descricao, giros FROM qtde_cores_tipos')
                 self.giros_map = {desc: giros if giros is not None else 1 for desc, giros in cur.fetchall()}
 
-                # Carrega o mapa de velocidade dos equipamentos
                 cur.execute('SELECT descricao, tempo_por_folha_ms FROM equipamentos_tipos')
                 self.equipment_speed_map.clear()
                 for desc, speed_ms in cur.fetchall():
@@ -358,7 +413,7 @@ class PCPWindow(tb.Toplevel):
             with conn.cursor() as cur:
                 sql_query = """
                     SELECT 
-                        op.sequencia_producao, op.id, op.numero_wo, op.cliente, 
+                        op.sequencia_producao, op.id, op.pn_partnumber, op.numero_wo, op.cliente, 
                         op.data_previsao_entrega,
                         ss.total_servicos, ss.servicos_concluidos,
                         ss.servico_em_producao, ss.proximo_servico_pendente,
@@ -381,6 +436,7 @@ class PCPWindow(tb.Toplevel):
                         WHERE ordem_id = op.id
                     ) ss ON true
                     WHERE op.status IN ('Em Aberto', 'Em Produção')
+                    AND (ss.total_servicos IS NULL OR ss.servicos_concluidos < ss.total_servicos)
                     ORDER BY op.sequencia_producao ASC;
                 """
                 cur.execute(sql_query)
@@ -402,7 +458,7 @@ class PCPWindow(tb.Toplevel):
                 return
 
             for row in result:
-                (seq, ordem_id, wo, cliente, previsao, total_servicos, concluidos, em_prod, pendente, status_atraso) = row
+                (seq, ordem_id, pn, wo, cliente, previsao, total_servicos, concluidos, em_prod, pendente, status_atraso) = row
                 
                 progresso_txt = "Sem serviços definidos"
                 if total_servicos and total_servicos > 0:
@@ -420,7 +476,7 @@ class PCPWindow(tb.Toplevel):
                     tags = ('atrasado',)
                     status_atraso = f"⚠️ {status_atraso}"
 
-                values = (seq, ordem_id, wo, cliente, progresso_txt, data_formatada, status_atraso)
+                values = (seq, ordem_id, pn, wo, cliente, progresso_txt, data_formatada, status_atraso)
                 self.tree.insert("", "end", values=values, tags=tags)
 
         except queue.Empty:
@@ -479,7 +535,6 @@ class PCPWindow(tb.Toplevel):
                     if not equipamento_id:
                         raise ValueError(f"Equipamento '{equip_nome}' não encontrado no cache.")
 
-                    # Convert tempo_formatado (HH:MM:SS) to milliseconds
                     h, m, s = map(int, tempo_formatado.split(':'))
                     tempo_previsto_ms = (h * 3600 + m * 60 + s) * 1000
 
@@ -510,7 +565,7 @@ class PCPWindow(tb.Toplevel):
             return
         
         item_values = self.tree.item(selected_item, 'values')
-        ordem_id, wo_num = item_values[1], item_values[2]
+        ordem_id, wo_num = item_values[1], item_values[3]
         if not messagebox.askyesno(self.get_string('confirm_cancel_order_title'), self.get_string('confirm_cancel_order_msg', wo=wo_num), parent=self):
             return
 
@@ -581,7 +636,6 @@ class PCPWindow(tb.Toplevel):
         self.swap_orders(selected_item, next_item)
 
     def clear_fields(self):
-        """Limpa todos os campos do formulário e a lista de máquinas."""
         for widget in self.widgets.values():
             if isinstance(widget, tb.Combobox):
                 widget.set('')
@@ -652,7 +706,7 @@ class PCPWindow(tb.Toplevel):
         self.move_up_button.config(state=NORMAL)
         self.move_down_button.config(state=NORMAL)
         item_values = self.tree.item(selected_item, 'values')
-        progresso_text = item_values[4] if len(item_values) > 4 else ""
+        progresso_text = item_values[5] if len(item_values) > 5 else ""
         if "concluídas" not in progresso_text.lower():
             self.edit_button.config(state=NORMAL)
             self.cancel_button.config(state=NORMAL)
@@ -671,7 +725,6 @@ class PCPWindow(tb.Toplevel):
         equipamento = self.machine_static_widgets["equipamento_id"].get()
         tiragem_str = self.machine_static_widgets["tiragem_em_folhas"].get()
         
-        # Get selected cores from material details
         cores_desc = self.material_widgets["qtde_cores_id"].get()
         if not cores_desc:
             messagebox.showwarning("Campo Obrigatório", "Selecione a quantidade de cores nos Detalhes do Material.", parent=self)
@@ -687,17 +740,13 @@ class PCPWindow(tb.Toplevel):
             tempo_total_s = tempo_total_ms / 1000.0
             tempo_formatado = self.format_seconds_to_hhmmss(tempo_total_s)
             
-            # Calculate giros based on material details cores
             multiplicador = self.giros_map.get(cores_desc, 1)
             giros_calculado = tiragem * multiplicador
 
-            # Store dynamic values (if any) in the treeview item's tags for later retrieval
-            # Note: giros and cores are now derived from material details, not dynamic machine fields
             dynamic_values = {key: widget.get() for key, widget in self.machine_dynamic_widgets.items()}
             
             self.machines_tree.insert("", "end", values=(equipamento, tiragem, giros_calculado, cores_desc, tempo_formatado), tags=[json.dumps(dynamic_values)])
 
-            # Clear static and dynamic fields
             for widget in self.machine_static_widgets.values():
                 if isinstance(widget, tb.Entry):
                     widget.delete(0, 'end')
@@ -760,5 +809,4 @@ class PCPWindow(tb.Toplevel):
             messagebox.showinfo("Sucesso", "Relatório PDF gerado com sucesso!")
 
     def get_db_connection(self):
-        """Retorna uma conexão do pool de banco de dados."""
         return get_db_connection()
