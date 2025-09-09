@@ -238,6 +238,10 @@ class ProductionTab(tb.Frame):
 
         self.wo_info_frame = tb.LabelFrame(right_column_frame, text=self.get_string('order_info_section'), bootstyle=PRIMARY, padding=FRAME_PADDING)
         self.wo_info_frame.grid(row=0, column=0, sticky="new")
+
+        close_button = tb.Button(self.wo_info_frame, text="X", command=self.close_tab, bootstyle="danger-link")
+        close_button.grid(row=0, column=2, sticky='ne', padx=5)
+
         info_keys = {'col_wo': 'Nº WO', 'col_cliente': 'Cliente', 'equipment_label': 'Equipamento do Serviço', 'col_tipo_papel': 'Tipo Papel', 'col_tiragem_em_folhas': 'Tiragem Meta', 'giros_previstos': 'Giros Previstos', 'tempo_previsto': 'Tempo Previsto'}
         for i, (key, text) in enumerate(info_keys.items()):
             display_text = self.get_string(key) if self.get_string(key) != f"_{key}_" else text
@@ -850,12 +854,6 @@ class App(Toplevel):
         return lang_dict.get(key, f"_{key}_").format(**kwargs)
 
     def add_new_tab(self, select_new_tab=True):
-        if len(self.tabs) >= 3:
-            messagebox.showwarning(self.get_string('limit_reached_title'), self.get_string('max_tabs_limit_msg', limit=3), parent=self)
-            if self.tabs:
-                self.notebook.select(self.tabs[-1])
-            return None
-
         tab_frame = ProductionTab(self.notebook, self.db_config, self)
         self.tabs.append(tab_frame)
         
@@ -911,7 +909,7 @@ class App(Toplevel):
         self.tabs.remove(tab_frame)
         
         if not self.tabs:
-            self.destroy()
+            self.add_new_tab()
 
     def on_close(self):
         for tab in list(self.tabs): # Iterate over a copy
