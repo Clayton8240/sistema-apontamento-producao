@@ -524,3 +524,270 @@ def get_manageable_users(current_user_role):
     finally:
         if conn:
             release_db_connection(conn)
+
+def _get_all_from_table(table_name, order_by='id'):
+    """
+    Busca todos os registros de uma tabela específica.
+
+    Args:
+        table_name (str): O nome da tabela.
+        order_by (str): O campo para ordenar os resultados.
+
+    Returns:
+        list: Uma lista de dicionários representando os registros.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT * FROM {table_name} ORDER BY {order_by}")
+            columns = [col[0] for col in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
+    except (Exception, psycopg2.Error) as e:
+        logging.error(f"Erro ao buscar dados da tabela {table_name}: {e}")
+        raise ServiceError(f"Erro ao buscar dados da tabela {table_name}: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def get_all_impressores():
+    return _get_all_from_table('impressores', 'nome')
+
+def get_all_turnos():
+    return _get_all_from_table('turnos_tipos', 'descricao')
+
+def get_all_motivos_perda():
+    return _get_all_from_table('motivos_perda_tipos', 'descricao')
+
+def get_all_motivos_parada():
+    return _get_all_from_table('motivos_parada_tipos', 'descricao')
+
+def create_appointment(data):
+    """
+    Cria um novo apontamento de produção.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                INSERT INTO apontamento (servico_id, data, horainicio, horafim, giros_rodados, quantidadeproduzida, perdas_producao, ocorrencias, impressor_id, turno_id, motivo_perda_id)
+                VALUES (%(servico_id)s, %(data)s, %(horainicio)s, %(horafim)s, %(giros_rodados)s, %(quantidadeproduzida)s, %(perdas_producao)s, %(ocorrencias)s, %(impressor_id)s, %(turno_id)s, %(motivo_perda_id)s)
+                RETURNING id;
+            """
+            cur.execute(query, data)
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            logging.debug(f"Apontamento criado com ID: {new_id}")
+            return new_id
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao criar apontamento: {e}")
+        raise ServiceError(f"Erro ao criar apontamento: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def get_stops_for_appointment(appointment_id):
+    """
+    Busca todas as paradas de um apontamento específico.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                SELECT ap.id, ap.hora_inicio_parada as horainicio, ap.hora_fim_parada as horafim, mp.descricao AS motivo
+                FROM paradas ap
+                JOIN motivos_parada_tipos mp ON ap.motivo_id = mp.id
+                WHERE ap.apontamento_id = %s
+                ORDER BY ap.hora_inicio_parada;
+            """
+            cur.execute(query, (appointment_id,))
+            columns = [col[0] for col in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
+    except (Exception, psycopg2.Error) as e:
+        logging.error(f"Erro ao buscar paradas do apontamento {appointment_id}: {e}")
+        raise ServiceError(f"Erro ao buscar paradas do apontamento {appointment_id}: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def create_stop(data):
+    """
+    Cria uma nova parada de produção.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                INSERT INTO paradas (apontamento_id, hora_inicio_parada, hora_fim_parada, motivo_id)
+                VALUES (%(apontamento_id)s, %(horainicio)s, %(horafim)s, %(motivo_parada_id)s)
+                RETURNING id;
+            """
+            cur.execute(query, data)
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            logging.debug(f"Parada criada com ID: {new_id}")
+            return new_id
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao criar parada: {e}")
+        raise ServiceError(f"Erro ao criar parada: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def update_stop(stop_id, data):
+    """
+    Atualiza uma parada de produção existente.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                UPDATE paradas
+                SET hora_inicio_parada = %(horainicio)s, hora_fim_parada = %(horafim)s, motivo_id = %(motivo_parada_id)s
+                WHERE id = %(id)s;
+            """
+            data['id'] = stop_id
+            cur.execute(query, data)
+            conn.commit()
+            logging.debug(f"Parada atualizada com ID: {stop_id}")
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao atualizar parada: {e}")
+        raise ServiceError(f"Erro ao atualizar parada: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def delete_stop(stop_id):
+    """
+    Deleta uma parada de produção.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = "DELETE FROM paradas WHERE id = %s;"
+            cur.execute(query, (stop_id,))
+            conn.commit()
+            logging.debug(f"Parada deletada com ID: {stop_id}")
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao deletar parada: {e}")
+        raise ServiceError(f"Erro ao deletar parada: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+# --- Setup Appointments Services ---
+def get_setup_appointment_by_service_id(service_id):
+    """
+    Busca um apontamento de setup pelo ID do serviço.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = "SELECT * FROM apontamento_setup WHERE servico_id = %s;"
+            cur.execute(query, (service_id,))
+            columns = [col[0] for col in cur.description]
+            result = cur.fetchone()
+            if result:
+                return dict(zip(columns, result))
+            return None
+    except (Exception, psycopg2.Error) as e:
+        logging.error(f"Erro ao buscar apontamento de setup: {e}")
+        raise ServiceError(f"Erro ao buscar apontamento de setup: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def create_setup_appointment(data):
+    """
+    Cria um novo apontamento de setup.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                INSERT INTO apontamento_setup (servico_id, data_apontamento, hora_inicio, hora_fim, perdas, malas, total_lavagens, numero_inspecao)
+                VALUES (%(servico_id)s, %(data_apontamento)s, %(hora_inicio)s, %(hora_fim)s, %(perdas)s, %(malas)s, %(total_lavagens)s, %(numero_inspecao)s)
+                RETURNING id;
+            """
+            cur.execute(query, data)
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            logging.debug(f"Apontamento de setup criado com ID: {new_id}")
+            return new_id
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao criar apontamento de setup: {e}")
+        raise ServiceError(f"Erro ao criar apontamento de setup: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def update_setup_appointment(setup_id, data):
+    """
+    Atualiza um apontamento de setup existente.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                UPDATE apontamento_setup
+                SET
+                    data_apontamento = %(data_apontamento)s,
+                    hora_inicio = %(hora_inicio)s,
+                    hora_fim = %(hora_fim)s,
+                    perdas = %(perdas)s,
+                    malas = %(malas)s,
+                    total_lavagens = %(total_lavagens)s,
+                    numero_inspecao = %(numero_inspecao)s
+                WHERE id = %(id)s;
+            """
+            data['id'] = setup_id
+            cur.execute(query, data)
+            conn.commit()
+            logging.debug(f"Apontamento de setup atualizado com ID: {setup_id}")
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao atualizar apontamento de setup: {e}")
+        raise ServiceError(f"Erro ao atualizar apontamento de setup: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def delete_setup_appointment(setup_id):
+    """
+    Deleta um apontamento de setup.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = "DELETE FROM apontamento_setup WHERE id = %s;"
+            cur.execute(query, (setup_id,))
+            conn.commit()
+            logging.debug(f"Apontamento de setup deletado com ID: {setup_id}")
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao deletar apontamento de setup: {e}")
+        raise ServiceError(f"Erro ao deletar apontamento de setup: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
