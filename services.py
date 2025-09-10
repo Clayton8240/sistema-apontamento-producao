@@ -791,3 +791,103 @@ def delete_setup_appointment(setup_id):
     finally:
         if conn:
             release_db_connection(conn)
+
+# --- Setup Stops Services ---
+def get_stops_for_setup_appointment(setup_id):
+    """
+    Busca todas as paradas de um apontamento de setup específico.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                SELECT ps.id, ps.hora_inicio_parada as horainicio, ps.hora_fim_parada as horafim, mpt.descricao AS motivo
+                FROM paradas_setup ps
+                JOIN motivos_parada_tipos mpt ON ps.motivo_id = mpt.id
+                WHERE ps.setup_id = %s
+                ORDER BY ps.hora_inicio_parada;
+            """
+            cur.execute(query, (setup_id,))
+            columns = [col[0] for col in cur.description]
+            return [dict(zip(columns, row)) for row in cur.fetchall()]
+    except (Exception, psycopg2.Error) as e:
+        logging.error(f"Erro ao buscar paradas do apontamento de setup {setup_id}: {e}")
+        raise ServiceError(f"Erro ao buscar paradas do apontamento de setup {setup_id}: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def create_setup_stop(data):
+    """
+    Cria uma nova parada de setup.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                INSERT INTO paradas_setup (setup_id, hora_inicio_parada, hora_fim_parada, motivo_id)
+                VALUES (%(setup_id)s, %(horainicio)s, %(horafim)s, %(motivo_id)s)
+                RETURNING id;
+            """
+            cur.execute(query, data)
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            logging.debug(f"Parada de setup criada com ID: {new_id}")
+            return new_id
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao criar parada de setup: {e}")
+        raise ServiceError(f"Erro ao criar parada de setup: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def update_setup_stop(stop_id, data):
+    """
+    Atualiza uma parada de setup existente.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = """
+                UPDATE paradas_setup
+                SET hora_inicio_parada = %(horainicio)s, hora_fim_parada = %(horafim)s, motivo_id = %(motivo_id)s
+                WHERE id = %(id)s;
+            """
+            data['id'] = stop_id
+            cur.execute(query, data)
+            conn.commit()
+            logging.debug(f"Parada de setup atualizada com ID: {stop_id}")
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao atualizar parada de setup: {e}")
+        raise ServiceError(f"Erro ao atualizar parada de setup: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+def delete_setup_stop(stop_id):
+    """
+    Deleta uma parada de setup.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            query = "DELETE FROM paradas_setup WHERE id = %s;"
+            cur.execute(query, (stop_id,))
+            conn.commit()
+            logging.debug(f"Parada de setup deletada com ID: {stop_id}")
+    except (Exception, psycopg2.Error) as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Erro ao deletar parada de setup: {e}")
+        raise ServiceError(f"Erro ao deletar parada de setup: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)

@@ -9,7 +9,8 @@ from services import (
     get_all_motivos_perda, create_appointment, get_stops_for_appointment,
     create_stop, update_stop, delete_stop, get_all_motivos_parada,
     get_setup_appointment_by_service_id, create_setup_appointment,
-    update_setup_appointment, delete_setup_appointment
+    update_setup_appointment, delete_setup_appointment,
+    get_stops_for_setup_appointment, create_setup_stop, update_setup_stop, delete_setup_stop
 )
 
 class EditStopsWindow(Toplevel):
@@ -139,6 +140,133 @@ class EditStopsWindow(Toplevel):
         self.delete_button.config(state=DISABLED)
         self.tree.selection_remove(self.tree.selection())
 
+class EditSetupStopsWindow(Toplevel):
+    def __init__(self, master, setup_id):
+        super().__init__(master)
+        self.master = master
+        self.setup_id = setup_id
+        self.title(f"Editar Paradas do Setup {setup_id}")
+        self.geometry("800x600")
+        self.grab_set()
+
+        self.stops_data = []
+        self.motivos_parada = {m['id']: m['descricao'] for m in get_all_motivos_parada()}
+        self.motivos_parada_rev = {v: k for k, v in self.motivos_parada.items()}
+
+        self.create_widgets()
+        self.load_stops()
+
+    def create_widgets(self):
+        main_frame = tb.Frame(self, padding=15)
+        main_frame.pack(fill=BOTH, expand=YES)
+
+        list_frame = tb.LabelFrame(main_frame, text="Paradas de Setup", bootstyle=PRIMARY, padding=10)
+        list_frame.pack(fill=BOTH, expand=YES, pady=(0, 10))
+
+        cols = ['id', 'horainicio', 'horafim', 'motivo']
+        headers = ['ID', 'Início', 'Fim', 'Motivo']
+
+        self.tree = tb.Treeview(list_frame, columns=cols, show="headings")
+        for col, header in zip(cols, headers):
+            self.tree.heading(col, text=header)
+            self.tree.column(col, width=150, anchor=CENTER)
+        self.tree.column('motivo', anchor="w")
+        self.tree.bind("<<TreeviewSelect>>", self.on_item_select)
+        self.tree.pack(fill=BOTH, expand=YES)
+
+        edit_frame = tb.LabelFrame(main_frame, text="Adicionar/Editar Parada de Setup", bootstyle=INFO, padding=10)
+        edit_frame.pack(fill=X, pady=10)
+        self.edit_fields = {}
+
+        form_fields = {"horainicio": "Hora Início (HH:MM:SS)", "horafim": "Hora Fim (HH:MM:SS)"}
+        row, col = 0, 0
+        for name, text in form_fields.items():
+            tb.Label(edit_frame, text=text).grid(row=row, column=col, padx=5, pady=5, sticky="w")
+            entry = tb.Entry(edit_frame, width=30)
+            entry.grid(row=row, column=col+1, padx=5, pady=5, sticky="ew")
+            self.edit_fields[name] = entry
+            col += 2
+
+        tb.Label(edit_frame, text="Motivo").grid(row=0, column=4, padx=5, pady=5, sticky="w")
+        self.motivo_parada_combo = tb.Combobox(edit_frame, values=list(self.motivos_parada.values()), width=30)
+        self.motivo_parada_combo.grid(row=0, column=5, padx=5, pady=5, sticky="ew")
+
+        button_frame = tb.Frame(main_frame)
+        button_frame.pack(fill=X, pady=10)
+
+        self.save_button = tb.Button(button_frame, text="Salvar Parada", command=self.save_stop)
+        self.save_button.pack(side="left", padx=5)
+        self.delete_button = tb.Button(button_frame, text="Deletar Parada", bootstyle=DANGER, command=self.delete_stop, state=DISABLED)
+        self.delete_button.pack(side="left", padx=5)
+        self.clear_button = tb.Button(button_frame, text="Limpar", command=self.clear_form)
+        self.clear_button.pack(side="left", padx=5)
+
+    def load_stops(self):
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+        try:
+            self.stops_data = get_stops_for_setup_appointment(self.setup_id)
+            for stop in self.stops_data:
+                values = (stop['id'], stop['horainicio'], stop['horafim'], stop['motivo'])
+                self.tree.insert("", "end", values=values, iid=stop['id'])
+        except ServiceError as e:
+            messagebox.showerror("Erro", f"Não foi possível carregar as paradas de setup: {e}", parent=self)
+
+    def on_item_select(self, event):
+        selected_items = self.tree.selection()
+        if not selected_items:
+            return
+        self.selected_stop_id = int(selected_items[0])
+        stop = next((s for s in self.stops_data if s['id'] == self.selected_stop_id), None)
+        if stop:
+            self.edit_fields['horainicio'].delete(0, END)
+            self.edit_fields['horainicio'].insert(0, stop['horainicio'])
+            self.edit_fields['horafim'].delete(0, END)
+            self.edit_fields['horafim'].insert(0, stop['horafim'])
+            self.motivo_parada_combo.set(stop['motivo'])
+            self.delete_button.config(state="normal")
+
+    def save_stop(self):
+        data = {name: widget.get() for name, widget in self.edit_fields.items()}
+        motivo_desc = self.motivo_parada_combo.get()
+        if not all(data.values()) or not motivo_desc:
+            messagebox.showwarning("Atenção", "Todos os campos são obrigatórios.", parent=self)
+            return
+        
+        data['motivo_id'] = self.motivos_parada_rev.get(motivo_desc)
+        
+        try:
+            if hasattr(self, 'selected_stop_id') and self.selected_stop_id:
+                update_setup_stop(self.selected_stop_id, data)
+                messagebox.showinfo("Sucesso", "Parada de setup atualizada!", parent=self)
+            else:
+                data['setup_id'] = self.setup_id
+                create_setup_stop(data)
+                messagebox.showinfo("Sucesso", "Parada de setup criada!", parent=self)
+            self.load_stops()
+            self.clear_form()
+        except ServiceError as e:
+            messagebox.showerror("Erro", f"Não foi possível salvar a parada de setup: {e}", parent=self)
+
+    def delete_stop(self):
+        if hasattr(self, 'selected_stop_id') and self.selected_stop_id:
+            if messagebox.askyesno("Confirmar", "Deseja deletar a parada de setup selecionada?", parent=self):
+                try:
+                    delete_setup_stop(self.selected_stop_id)
+                    messagebox.showinfo("Sucesso", "Parada de setup deletada!", parent=self)
+                    self.load_stops()
+                    self.clear_form()
+                except ServiceError as e:
+                    messagebox.showerror("Erro", f"Não foi possível deletar a parada de setup: {e}", parent=self)
+
+    def clear_form(self):
+        for widget in self.edit_fields.values():
+            widget.delete(0, END)
+        self.motivo_parada_combo.set('')
+        self.selected_stop_id = None
+        self.delete_button.config(state=DISABLED)
+        self.tree.selection_remove(self.tree.selection())
+
 class EditAppointmentsWindow(Toplevel):
     def __init__(self, master):
         super().__init__(master)
@@ -255,6 +383,8 @@ class EditAppointmentsWindow(Toplevel):
         self.save_setup_button.pack(side="left", padx=5)
         self.delete_setup_button = tb.Button(button_frame, text="Deletar Setup", bootstyle=DANGER, state=DISABLED, command=self.delete_selected_setup)
         self.delete_setup_button.pack(side="left", padx=5)
+        self.setup_stops_button = tb.Button(button_frame, text="Editar Paradas de Setup", bootstyle=SECONDARY, state=DISABLED, command=self.open_setup_stops_editor)
+        self.setup_stops_button.pack(side="left", padx=5)
 
     def get_combobox_values(self, field_name):
         if field_name == "impressor_id": return list(self.impressores.values())
@@ -324,6 +454,7 @@ class EditAppointmentsWindow(Toplevel):
                         widget.insert(0, str(value))
                 self.save_setup_button.config(state="normal")
                 self.delete_setup_button.config(state="normal")
+                self.setup_stops_button.config(state="normal")
             else:
                  self.save_setup_button.config(state="normal") # Allow creating a new one
         except ServiceError as e:
@@ -419,6 +550,7 @@ class EditAppointmentsWindow(Toplevel):
             widget.delete(0, END)
         self.save_setup_button.config(state=DISABLED)
         self.delete_setup_button.config(state=DISABLED)
+        self.setup_stops_button.config(state=DISABLED)
 
     def delete_selected_appointment(self):
         if not self.selected_appointment:
@@ -463,3 +595,9 @@ class EditAppointmentsWindow(Toplevel):
             messagebox.showwarning("Atenção", "Selecione um apontamento para editar suas paradas.", parent=self)
             return
         EditStopsWindow(self, self.selected_appointment['id'])
+
+    def open_setup_stops_editor(self):
+        if not self.selected_setup_appointment:
+            messagebox.showwarning("Atenção", "Selecione um apontamento de setup para editar suas paradas.", parent=self)
+            return
+        EditSetupStopsWindow(self, self.selected_setup_appointment['id'])
