@@ -394,6 +394,7 @@ def get_appointments_for_editing():
                     a.id,
                     a.servico_id,
                     op.numero_wo,
+                    op.pn_partnumber,
                     os.descricao AS servico,
                     i.nome AS operador,
                     a.data,
@@ -405,11 +406,17 @@ def get_appointments_for_editing():
                     a.ocorrencias,
                     a.impressor_id,
                     a.turno_id,
-                    a.motivo_perda_id
+                    a.motivo_perda_id,
+                    op.fsc_id,
+                    op.tipo_papel_id,
+                    op.gramatura_id,
+                    op.qtde_cores_id,
+                    asetup.numero_inspecao
                 FROM apontamento a
                 JOIN ordem_servicos os ON a.servico_id = os.id
                 JOIN ordem_producao op ON os.ordem_id = op.id
                 LEFT JOIN impressores i ON a.impressor_id = i.id
+                LEFT JOIN apontamento_setup asetup ON a.servico_id = asetup.servico_id
                 ORDER BY a.data DESC, a.horainicio DESC;
             """
             cur.execute(query)
@@ -430,7 +437,8 @@ def update_appointment(appointment_id, data):
     try:
         conn = get_db_connection()
         with conn.cursor() as cur:
-            query = """
+            # Update apontamento table
+            query_apontamento = """
                 UPDATE apontamento
                 SET
                     data = %(data)s,
@@ -446,7 +454,30 @@ def update_appointment(appointment_id, data):
                 WHERE id = %(id)s;
             """
             data['id'] = appointment_id
-            cur.execute(query, data)
+            cur.execute(query_apontamento, data)
+
+            # Update ordem_producao table
+            query_ordem_producao = """
+                UPDATE ordem_producao
+                SET
+                    fsc_id = %(fsc_id)s,
+                    tipo_papel_id = %(tipo_papel_id)s,
+                    gramatura_id = %(gramatura_id)s,
+                    qtde_cores_id = %(qtde_cores_id)s,
+                    pn_partnumber = %(pn_partnumber)s
+                WHERE id = (SELECT ordem_id FROM ordem_servicos WHERE id = %(servico_id)s);
+            """
+            cur.execute(query_ordem_producao, data)
+
+            # Update apontamento_setup table
+            query_apontamento_setup = """
+                UPDATE apontamento_setup
+                SET
+                    numero_inspecao = %(numero_inspecao)s
+                WHERE servico_id = %(servico_id)s;
+            """
+            cur.execute(query_apontamento_setup, data)
+
             conn.commit()
             logging.debug(f"Apontamento atualizado com ID: {appointment_id}")
     except (Exception, psycopg2.Error) as e:
@@ -561,6 +592,33 @@ def get_all_motivos_perda():
 
 def get_all_motivos_parada():
     return _get_all_from_table('motivos_parada_tipos', 'descricao')
+
+def get_all_fsc():
+    return _get_all_from_table('fsc_tipos', 'descricao')
+
+def get_all_tipos_papel():
+    return _get_all_from_table('tipos_papel', 'descricao')
+
+def get_all_gramaturas():
+    return _get_all_from_table('gramaturas_tipos', 'valor')
+
+def get_all_qtde_cores():
+    return _get_all_from_table('qtde_cores_tipos', 'descricao')
+
+def get_last_servico_id():
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM ordem_servicos ORDER BY id DESC LIMIT 1")
+            result = cur.fetchone()
+            return result[0] if result else 0
+    except (Exception, psycopg2.Error) as e:
+        logging.error(f"Erro ao buscar o último ID de serviço: {e}")
+        raise ServiceError(f"Erro ao buscar o último ID de serviço: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
 
 def create_appointment(data):
     """

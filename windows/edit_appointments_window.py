@@ -10,7 +10,8 @@ from services import (
     create_stop, update_stop, delete_stop, get_all_motivos_parada,
     get_setup_appointment_by_service_id, create_setup_appointment,
     update_setup_appointment, delete_setup_appointment,
-    get_stops_for_setup_appointment, create_setup_stop, update_setup_stop, delete_setup_stop
+    get_stops_for_setup_appointment, create_setup_stop, update_setup_stop, delete_setup_stop,
+    get_all_fsc, get_all_tipos_papel, get_all_gramaturas, get_all_qtde_cores, get_last_servico_id
 )
 
 class EditStopsWindow(Toplevel):
@@ -287,9 +288,18 @@ class EditAppointmentsWindow(Toplevel):
             self.impressores = {i['id']: i['nome'] for i in get_all_impressores()}
             self.turnos = {t['id']: t['descricao'] for t in get_all_turnos()}
             self.motivos_perda = {m['id']: m['descricao'] for m in get_all_motivos_perda()}
+            self.fsc_tipos = {f['id']: f['descricao'] for f in get_all_fsc()}
+            self.tipos_papel = {p['id']: p['descricao'] for p in get_all_tipos_papel()}
+            self.gramaturas = {g['id']: str(g['valor']) for g in get_all_gramaturas()}
+            self.qtde_cores = {c['id']: c['descricao'] for c in get_all_qtde_cores()}
+
             self.impressores_rev = {v: k for k, v in self.impressores.items()}
             self.turnos_rev = {v: k for k, v in self.turnos.items()}
             self.motivos_perda_rev = {v: k for k, v in self.motivos_perda.items()}
+            self.fsc_tipos_rev = {v: k for k, v in self.fsc_tipos.items()}
+            self.tipos_papel_rev = {v: k for k, v in self.tipos_papel.items()}
+            self.gramaturas_rev = {v: k for k, v in self.gramaturas.items()}
+            self.qtde_cores_rev = {v: k for k, v in self.qtde_cores.items()}
         except ServiceError as e:
             messagebox.showerror("Erro de Dados", f"Não foi possível carregar dados auxiliares: {e}", parent=self)
             self.destroy()
@@ -301,8 +311,8 @@ class EditAppointmentsWindow(Toplevel):
         list_frame = tb.LabelFrame(main_frame, text="Apontamentos de Produção", bootstyle=PRIMARY, padding=10)
         list_frame.pack(fill=BOTH, expand=YES, pady=(0, 10))
 
-        cols = ['id', 'numero_wo', 'servico', 'operador', 'data', 'horainicio', 'horafim', 'quantidadeproduzida']
-        headers = ['ID', 'Ordem', 'Serviço', 'Operador', 'Data', 'Início', 'Fim', 'Produzido']
+        cols = ['id', 'numero_wo', 'pn_partnumber', 'servico', 'operador', 'data', 'horainicio', 'horafim', 'quantidadeproduzida']
+        headers = ['ID', 'Ordem', 'Partnumber', 'Serviço', 'Operador', 'Data', 'Início', 'Fim', 'Produzido']
         self.tree = tb.Treeview(list_frame, columns=cols, show="headings")
         for col, header in zip(cols, headers):
             self.tree.heading(col, text=header)
@@ -325,15 +335,16 @@ class EditAppointmentsWindow(Toplevel):
 
     def create_main_edit_fields(self, parent_frame):
         form_fields = {
-            "servico_id": "ID Serviço", "data": "Data (dd/mm/yyyy)", "horainicio": "Início (HH:MM:SS)",
+            "servico_id": "ID Serviço", "pn_partnumber": "Partnumber", "numero_inspecao": "Nº Inspeção", "data": "Data (dd/mm/yyyy)", "horainicio": "Início (HH:MM:SS)",
             "horafim": "Fim (HH:MM:SS)", "giros_rodados": "Giros Rodados", "quantidadeproduzida": "Qtd. Produzida",
             "perdas_producao": "Perdas", "ocorrencias": "Ocorrências", "impressor_id": "Impressor",
-            "turno_id": "Turno", "motivo_perda_id": "Motivo Perda"
+            "turno_id": "Turno", "motivo_perda_id": "Motivo Perda", "fsc_id": "FSC", "tipo_papel_id": "Tipo Papel",
+            "gramatura_id": "Gramatura", "qtde_cores_id": "Qtd. Cores"
         }
         row, col = 0, 0
         for name, text in form_fields.items():
             tb.Label(parent_frame, text=text).grid(row=row, column=col, padx=5, pady=5, sticky="w")
-            if name in ["impressor_id", "turno_id", "motivo_perda_id"]:
+            if name in ["impressor_id", "turno_id", "motivo_perda_id", "fsc_id", "tipo_papel_id", "gramatura_id", "qtde_cores_id"]:
                 combo = tb.Combobox(parent_frame, width=38, values=self.get_combobox_values(name))
                 combo.grid(row=row, column=col+1, padx=5, pady=5, sticky="ew")
                 self.edit_fields[name] = combo
@@ -364,7 +375,7 @@ class EditAppointmentsWindow(Toplevel):
     def create_setup_edit_fields(self, parent_frame):
         form_fields = {
             "data_apontamento": "Data (dd/mm/yyyy)", "hora_inicio": "Início (HH:MM:SS)", "hora_fim": "Fim (HH:MM:SS)",
-            "perdas": "Perdas", "malas": "Malas", "total_lavagens": "Total Lavagens", "numero_inspecao": "Nº Inspeção"
+            "perdas": "Perdas", "malas": "Malas", "total_lavagens": "Total Lavagens"
         }
         row, col = 0, 0
         for name, text in form_fields.items():
@@ -390,6 +401,10 @@ class EditAppointmentsWindow(Toplevel):
         if field_name == "impressor_id": return list(self.impressores.values())
         if field_name == "turno_id": return list(self.turnos.values())
         if field_name == "motivo_perda_id": return list(self.motivos_perda.values())
+        if field_name == "fsc_id": return list(self.fsc_tipos.values())
+        if field_name == "tipo_papel_id": return list(self.tipos_papel.values())
+        if field_name == "gramatura_id": return list(self.gramaturas.values())
+        if field_name == "qtde_cores_id": return list(self.qtde_cores.values())
         return []
 
     def load_appointments(self):
@@ -401,7 +416,7 @@ class EditAppointmentsWindow(Toplevel):
             self.appointments_data = get_appointments_for_editing()
             for app in self.appointments_data:
                 values = (
-                    app['id'], app['numero_wo'], app['servico'], 
+                    app['id'], app['numero_wo'], app['pn_partnumber'], app['servico'], 
                     self.impressores.get(app['impressor_id'], 'N/A'),
                     app['data'].strftime('%d/%m/%Y') if app['data'] else '',
                     app['horainicio'].strftime('%H:%M:%S') if app['horainicio'] else '',
@@ -465,6 +480,10 @@ class EditAppointmentsWindow(Toplevel):
         if field_name == 'impressor_id': return self.impressores.get(key, "")
         if field_name == 'turno_id': return self.turnos.get(key, "")
         if field_name == 'motivo_perda_id': return self.motivos_perda.get(key, "")
+        if field_name == 'fsc_id': return self.fsc_tipos.get(key, "")
+        if field_name == 'tipo_papel_id': return self.tipos_papel.get(key, "")
+        if field_name == 'gramatura_id': return self.gramaturas.get(key, "")
+        if field_name == 'qtde_cores_id': return self.qtde_cores.get(key, "")
         return ""
 
     def get_lookup_id(self, field_name, value):
@@ -472,13 +491,17 @@ class EditAppointmentsWindow(Toplevel):
         if field_name == 'impressor_id': return self.impressores_rev.get(value)
         if field_name == 'turno_id': return self.turnos_rev.get(value)
         if field_name == 'motivo_perda_id': return self.motivos_perda_rev.get(value)
+        if field_name == 'fsc_id': return self.fsc_tipos_rev.get(value)
+        if field_name == 'tipo_papel_id': return self.tipos_papel_rev.get(value)
+        if field_name == 'gramatura_id': return self.gramaturas_rev.get(value)
+        if field_name == 'qtde_cores_id': return self.qtde_cores_rev.get(value)
         return None
 
     def save_changes(self):
         updated_data = {}
         for name, widget in self.edit_fields.items():
             value = widget.get() or None
-            if name in ["impressor_id", "turno_id", "motivo_perda_id"]:
+            if name in ["impressor_id", "turno_id", "motivo_perda_id", "fsc_id", "tipo_papel_id", "gramatura_id", "qtde_cores_id"]:
                 updated_data[name] = self.get_lookup_id(name, value)
             else:
                 updated_data[name] = value
@@ -526,7 +549,15 @@ class EditAppointmentsWindow(Toplevel):
         self.save_button.config(text="Criar Apontamento", state="normal")
         self.edit_frame.config(text="Novo Apontamento de Produção")
         self.edit_fields['servico_id'].config(state="normal")
-        self.edit_fields['servico_id'].focus()
+        try:
+            last_id = get_last_servico_id()
+            self.edit_fields['servico_id'].delete(0, END)
+            self.edit_fields['servico_id'].insert(0, str(last_id + 1))
+            self.edit_fields['servico_id'].config(state=DISABLED)
+        except ServiceError as e:
+            messagebox.showerror("Erro", f"Não foi possível obter o próximo ID de serviço: {e}", parent=self)
+            self.edit_fields['servico_id'].config(state="normal")
+        self.edit_fields['pn_partnumber'].focus()
 
     def clear_form(self):
         self.tree.selection_remove(self.tree.selection())
