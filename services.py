@@ -395,6 +395,7 @@ def get_appointments_for_editing():
                     a.servico_id,
                     op.numero_wo,
                     op.pn_partnumber,
+                    op.cliente,
                     os.descricao AS servico,
                     i.nome AS operador,
                     a.data,
@@ -410,6 +411,7 @@ def get_appointments_for_editing():
                     op.fsc_id,
                     op.tipo_papel_id,
                     op.gramatura_id,
+                    op.formato_id,
                     op.qtde_cores_id,
                     asetup.numero_inspecao
                 FROM apontamento a
@@ -464,7 +466,9 @@ def update_appointment(appointment_id, data):
                     tipo_papel_id = %(tipo_papel_id)s,
                     gramatura_id = %(gramatura_id)s,
                     qtde_cores_id = %(qtde_cores_id)s,
-                    pn_partnumber = %(pn_partnumber)s
+                    pn_partnumber = %(pn_partnumber)s,
+                    cliente = %(cliente)s,
+                    formato_id = %(formato_id)s
                 WHERE id = (SELECT ordem_id FROM ordem_servicos WHERE id = %(servico_id)s);
             """
             cur.execute(query_ordem_producao, data)
@@ -605,6 +609,9 @@ def get_all_gramaturas():
 def get_all_qtde_cores():
     return _get_all_from_table('qtde_cores_tipos', 'descricao')
 
+def get_all_formatos():
+    return _get_all_from_table('formatos_tipos', 'descricao')
+
 def get_last_servico_id():
     conn = None
     try:
@@ -698,6 +705,7 @@ def create_stop(data):
     finally:
         if conn:
             release_db_connection(conn)
+
 
 def update_stop(stop_id, data):
     """
