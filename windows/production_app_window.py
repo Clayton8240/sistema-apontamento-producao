@@ -22,6 +22,14 @@ TIMER_FONT = ('Helvetica', 20, 'bold')
 class StopDetailsWindow(Toplevel):
     """Janela para visualizar os detalhes das paradas de um apontamento."""
     def __init__(self, master, stops_data, wo_number):
+        """
+        Inicializa a janela de detalhes de parada.
+
+        Parâmetros:
+            master: O widget pai.
+            stops_data (list): Uma lista de dicionários, onde cada dicionário representa uma parada.
+            wo_number (str): O número da Ordem de Produção (WO) para exibição no título.
+        """
         super().__init__(master)
         self.master = master
         self.stops_data = stops_data
@@ -36,6 +44,12 @@ class StopDetailsWindow(Toplevel):
         self.load_stops_data()
 
     def create_widgets(self):
+        """
+        Cria e posiciona os widgets na janela.
+
+        Esta função configura a Treeview para exibir os detalhes das paradas,
+        incluindo colunas para tipo, motivo, início, fim e duração.
+        """
         main_frame = tb.Frame(self, padding=FRAME_PADDING)
         main_frame.pack(fill=BOTH, expand=YES)
 
@@ -54,6 +68,12 @@ class StopDetailsWindow(Toplevel):
         scrollbar.pack(side=RIGHT, fill=Y)
 
     def load_stops_data(self):
+        """
+        Carrega os dados das paradas na Treeview.
+
+        Itera sobre a lista de paradas, formata os dados e os insere na Treeview.
+        Calcula a duração de cada parada e formata o motivo, especialmente para "Outros".
+        """
         if not self.stops_data:
             tb.Label(self, text="Nenhuma parada registrada.").pack(pady=PAD_Y_XXL)
             return
@@ -81,6 +101,14 @@ class StopDetailsWindow(Toplevel):
 class ProductionTab(tb.Frame):
     """Represents a single tab for one production entry."""
     def __init__(self, master, db_config, app_controller):
+        """
+        Inicializa a aba de produção.
+
+        Parâmetros:
+            master: O widget pai (o Notebook).
+            db_config (dict): Configurações do banco de dados.
+            app_controller: A instância principal da aplicação (App) que gerencia as abas.
+        """
         super().__init__(master)
         self.db_config = db_config
         self.app_controller = app_controller # Reference to the main App

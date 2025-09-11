@@ -20,20 +20,26 @@ class ServiceError(Exception):
     pass
 
 def create_production_order(order_data, machine_list, acabamento_ids):
-    logging.debug(f"create_production_order called with order_data: {order_data}, machine_list: {machine_list}, acabamento_ids: {acabamento_ids}")
     """
-    Cria uma nova Ordem de Produção e todos os seus componentes (máquinas, serviços, acabamentos)
-    de forma transacional.
+    Cria uma nova Ordem de Produção e seus componentes de forma transacional.
 
-    Args:
-        order_data (dict): Dicionário com os dados da OP (numero_wo, cliente, data_previsao_entrega, tipo_papel_id, gramatura_id, formato_id, fsc_id, qtde_cores_id).
-        machine_list (list): Lista de dicionários, onde cada dicionário representa os dados de uma máquina.
-                             Ex: [{"equipamento_id": 1, "tiragem": 1000, "tempo_previsto_ms": 1000, "giros_previstos": 500, "dynamic_fields": {"giros_previstos": 500, "qtde_cores_id": 1}}]
+    A função insere a ordem de produção principal, os acabamentos associados,
+    as máquinas da sequência de produção e os serviços correspondentes.
+    Toda a operação é executada dentro de uma transação para garantir a
+    consistência dos dados. Em caso de erro, um rollback é executado.
+
+    Parâmetros:
+        order_data (dict): Dicionário com os dados da OP.
+        machine_list (list): Lista de dicionários com os dados de cada máquina na sequência.
         acabamento_ids (list): Lista de IDs dos acabamentos selecionados.
 
-    Raises:
+    Retorna:
+        Nenhum.
+
+    Levanta:
         ServiceError: Se ocorrer um erro durante a operação no banco de dados.
     """
+    logging.debug(f"create_production_order called with order_data: {order_data}, machine_list: {machine_list}, acabamento_ids: {acabamento_ids}")
     conn = None
     try:
         conn = get_db_connection()
@@ -105,19 +111,24 @@ def create_production_order(order_data, machine_list, acabamento_ids):
             release_db_connection(conn)
 
 def get_equipment_fields(equipamento_id):
-    logging.debug(f"get_equipment_fields called for equipamento_id: {equipamento_id}")
     """
-    Retorna os campos dinâmicos associados a um tipo de equipamento.
+    Busca os campos dinâmicos associados a um tipo de equipamento.
 
-    Args:
+    Esta função consulta o banco de dados para obter a lista de campos
+    personalizados que devem ser preenchidos para um determinado tipo de
+    equipamento, respeitando a ordem de exibição definida.
+
+    Parâmetros:
         equipamento_id (int): O ID do tipo de equipamento.
 
-    Returns:
-        list: Uma lista de dicionários, onde cada dicionário representa um campo,
-              contendo 'nome_campo', 'label_traducao', 'tipo_dado', 'widget_type', 'lookup_table'.
-    Raises:
-        ServiceError: Se ocorrer um erro durante a operação no banco de dados.
+    Retorna:
+        list: Uma lista de dicionários, onde cada dicionário representa um campo
+              e contém suas propriedades (nome, label, tipo, etc.).
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
     """
+    logging.debug(f"get_equipment_fields called for equipamento_id: {equipamento_id}")
     conn = None
     try:
         conn = get_db_connection()
@@ -149,18 +160,22 @@ def get_equipment_fields(equipamento_id):
             release_db_connection(conn)
 
 def get_field_id_by_name(field_name):
+    """
+    Obtém o ID de um campo dinâmico a partir do seu nome.
+
+    Função utilitária para encontrar o ID de um campo na tabela
+    `equipamento_campos` usando seu `nome_campo` único.
+
+    Parâmetros:
+        field_name (str): O nome do campo a ser buscado.
+
+    Retorna:
+        int: O ID do campo, ou None se não for encontrado.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
+    """
     logging.debug(f"get_field_id_by_name called for field_name: {field_name}")
-    """
-    Retorna o ID de um campo dinâmico dado o seu nome.
-
-    Args:
-        field_name (str): O nome do campo (nome_campo na tabela equipamento_campos).
-
-    Returns:
-        int: O ID do campo, ou None se não encontrado.
-    Raises:
-        ServiceError: Se ocorrer um erro durante a operação no banco de dados.
-    """
     conn = None
     try:
         conn = get_db_connection()
@@ -178,6 +193,21 @@ def get_field_id_by_name(field_name):
 
 # --- Equipment Types Services ---
 def get_all_equipment_types():
+    """
+    Busca todos os tipos de equipamentos cadastrados.
+
+    Retorna uma lista completa de todos os tipos de equipamentos, ordenados
+    pela descrição.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorna:
+        list: Uma lista de dicionários, cada um representando um tipo de equipamento.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
+    """
     logging.debug("get_all_equipment_types called")
     conn = None
     try:
@@ -194,6 +224,22 @@ def get_all_equipment_types():
             release_db_connection(conn)
 
 def create_equipment_type(description, tempo_por_folha_ms):
+    """
+    Cria um novo tipo de equipamento.
+
+    Insere um novo registro na tabela `equipamentos_tipos` e retorna o ID
+    do registro recém-criado.
+
+    Parâmetros:
+        description (str): A descrição do novo tipo de equipamento.
+        tempo_por_folha_ms (int): O tempo médio de processamento por folha em milissegundos.
+
+    Retorna:
+        int: O ID do novo tipo de equipamento criado.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a inserção no banco de dados.
+    """
     logging.debug(f"create_equipment_type called with description: {description}, tempo_por_folha_ms: {tempo_por_folha_ms}")
     conn = None
     try:
@@ -214,6 +260,23 @@ def create_equipment_type(description, tempo_por_folha_ms):
             release_db_connection(conn)
 
 def update_equipment_type(id, description, tempo_por_folha_ms):
+    """
+    Atualiza um tipo de equipamento existente.
+
+    Modifica a descrição e o tempo por folha de um tipo de equipamento
+    identificado pelo seu ID.
+
+    Parâmetros:
+        id (int): O ID do tipo de equipamento a ser atualizado.
+        description (str): A nova descrição para o tipo de equipamento.
+        tempo_por_folha_ms (int): O novo tempo médio por folha em milissegundos.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a atualização no banco de dados.
+    """
     logging.debug(f"update_equipment_type called with id: {id}, description: {description}, tempo_por_folha_ms: {tempo_por_folha_ms}")
     conn = None
     try:
@@ -232,6 +295,22 @@ def update_equipment_type(id, description, tempo_por_folha_ms):
             release_db_connection(conn)
 
 def delete_equipment_type(id):
+    """
+    Deleta um tipo de equipamento.
+
+    Remove um tipo de equipamento do banco de dados com base no seu ID.
+    A operação é transacional e será revertida em caso de erro.
+
+    Parâmetros:
+        id (int): O ID do tipo de equipamento a ser deletado.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro (ex: violação de chave estrangeira)
+                      durante a exclusão no banco de dados.
+    """
     logging.debug(f"delete_equipment_type called with id: {id}")
     conn = None
     try:
@@ -250,6 +329,21 @@ def delete_equipment_type(id):
 
 # --- Equipment Fields Services ---
 def get_all_equipment_fields():
+    """
+    Busca todos os campos de equipamento cadastrados.
+
+    Retorna uma lista completa de todos os campos dinâmicos disponíveis
+    para associação com tipos de equipamentos, ordenados pelo nome do campo.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorna:
+        list: Uma lista de dicionários, cada um representando um campo de equipamento.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
+    """
     logging.debug("get_all_equipment_fields called")
     conn = None
     try:
@@ -266,6 +360,25 @@ def get_all_equipment_fields():
             release_db_connection(conn)
 
 def create_equipment_field(nome_campo, label_traducao, tipo_dado, widget_type, lookup_table):
+    """
+    Cria um novo campo de equipamento.
+
+    Insere um novo registro na tabela `equipamento_campos` e retorna o ID
+    do campo recém-criado.
+
+    Parâmetros:
+        nome_campo (str): Nome interno do campo (deve ser único).
+        label_traducao (str): Rótulo do campo exibido na interface.
+        tipo_dado (str): Tipo de dado do campo (ex: 'texto', 'inteiro').
+        widget_type (str): Tipo de widget para renderização (ex: 'entry', 'combobox').
+        lookup_table (str, opcional): Tabela de consulta para widgets como combobox.
+
+    Retorna:
+        int: O ID do novo campo criado.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a inserção no banco de dados.
+    """
     logging.debug(f"create_equipment_field called with nome_campo: {nome_campo}")
     conn = None
     try:
@@ -286,6 +399,25 @@ def create_equipment_field(nome_campo, label_traducao, tipo_dado, widget_type, l
             release_db_connection(conn)
 
 def update_equipment_field(id, nome_campo, label_traducao, tipo_dado, widget_type, lookup_table):
+    """
+    Atualiza um campo de equipamento existente.
+
+    Modifica as propriedades de um campo de equipamento identificado pelo seu ID.
+
+    Parâmetros:
+        id (int): O ID do campo a ser atualizado.
+        nome_campo (str): Novo nome interno do campo.
+        label_traducao (str): Novo rótulo de exibição.
+        tipo_dado (str): Novo tipo de dado.
+        widget_type (str): Novo tipo de widget.
+        lookup_table (str, opcional): Nova tabela de consulta.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a atualização no banco de dados.
+    """
     logging.debug(f"update_equipment_field called with id: {id}")
     conn = None
     try:
@@ -304,6 +436,20 @@ def update_equipment_field(id, nome_campo, label_traducao, tipo_dado, widget_typ
             release_db_connection(conn)
 
 def delete_equipment_field(id):
+    """
+    Deleta um campo de equipamento.
+
+    Remove um campo de equipamento do banco de dados com base no seu ID.
+
+    Parâmetros:
+        id (int): O ID do campo de equipamento a ser deletado.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a exclusão no banco de dados.
+    """
     logging.debug(f"delete_equipment_field called with id: {id}")
     conn = None
     try:
@@ -322,6 +468,21 @@ def delete_equipment_field(id):
 
 # --- Equipment Type Field Association Services ---
 def get_equipment_type_fields(equipamento_type_id):
+    """
+    Busca os campos associados a um tipo de equipamento específico.
+
+    Retorna uma lista de campos que foram explicitamente associados a um
+    determinado tipo de equipamento, ordenados pela ordem de exibição definida.
+
+    Parâmetros:
+        equipamento_type_id (int): O ID do tipo de equipamento.
+
+    Retorna:
+        list: Uma lista de dicionários, cada um representando um campo associado.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
+    """
     logging.debug(f"get_equipment_type_fields called with equipamento_type_id: {equipamento_type_id}")
     conn = None
     try:
@@ -345,6 +506,23 @@ def get_equipment_type_fields(equipamento_type_id):
             release_db_connection(conn)
 
 def add_equipment_type_field(equipamento_type_id, field_id, order):
+    """
+    Associa um campo a um tipo de equipamento.
+
+    Cria um registro na tabela de associação `equipamentos_tipos_campos` para
+    vincular um campo a um tipo de equipamento com uma ordem de exibição.
+
+    Parâmetros:
+        equipamento_type_id (int): O ID do tipo de equipamento.
+        field_id (int): O ID do campo a ser associado.
+        order (int): A ordem de exibição do campo.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a inserção no banco de dados.
+    """
     logging.debug(f"add_equipment_type_field called with equipamento_type_id: {equipamento_type_id}, field_id: {field_id}, order: {order}")
     conn = None
     try:
@@ -363,6 +541,21 @@ def add_equipment_type_field(equipamento_type_id, field_id, order):
             release_db_connection(conn)
 
 def remove_equipment_type_field(equipamento_type_id, field_id):
+    """
+    Desassocia um campo de um tipo de equipamento.
+
+    Remove o registro de associação da tabela `equipamentos_tipos_campos`.
+
+    Parâmetros:
+        equipamento_type_id (int): O ID do tipo de equipamento.
+        field_id (int): O ID do campo a ser desassociado.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a exclusão no banco de dados.
+    """
     logging.debug(f"remove_equipment_type_field called with equipamento_type_id: {equipamento_type_id}, field_id: {field_id}")
     conn = None
     try:
@@ -383,7 +576,21 @@ def remove_equipment_type_field(equipamento_type_id, field_id):
 # --- Appointments Services ---
 def get_appointments_for_editing():
     """
-    Busca todos os apontamentos com detalhes para edição.
+    Busca todos os apontamentos com dados detalhados para edição.
+
+    Esta função realiza uma consulta complexa que junta várias tabelas
+    (apontamento, ordem_servicos, ordem_producao, etc.) para retornar
+    uma visão completa de cada apontamento, facilitando a edição.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorna:
+        list: Uma lista de dicionários, onde cada dicionário representa um
+              apontamento com todos os seus dados relacionados.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
     """
     conn = None
     try:
@@ -433,7 +640,22 @@ def get_appointments_for_editing():
 
 def update_appointment(appointment_id, data):
     """
-    Atualiza um apontamento existente.
+    Atualiza um apontamento de produção existente de forma transacional.
+
+    Esta função atualiza dados em múltiplas tabelas (`apontamento`,
+    `ordem_producao`, `apontamento_setup`) relacionadas a um único
+    apontamento. A operação é atômica.
+
+    Parâmetros:
+        appointment_id (int): O ID do apontamento a ser atualizado.
+        data (dict): Dicionário contendo os novos dados do apontamento e
+                     das tabelas relacionadas.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a atualização no banco de dados.
     """
     conn = None
     try:
@@ -495,7 +717,18 @@ def update_appointment(appointment_id, data):
 
 def delete_appointment(appointment_id):
     """
-    Deleta um apontamento.
+    Deleta um apontamento de produção.
+
+    Remove um registro da tabela `apontamento` com base no seu ID.
+
+    Parâmetros:
+        appointment_id (int): O ID do apontamento a ser deletado.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a exclusão no banco de dados.
     """
     conn = None
     try:
@@ -516,7 +749,19 @@ def delete_appointment(appointment_id):
 
 def finish_service(service_id):
     """
-    Finaliza um serviço, mudando seu status para 'Concluído'.
+    Finaliza um serviço, alterando seu status para 'Concluído'.
+
+    Atualiza o status de um serviço na tabela `ordem_servicos`, indicando
+    que sua execução foi finalizada.
+
+    Parâmetros:
+        service_id (int): O ID do serviço a ser finalizado.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a atualização no banco de dados.
     """
     conn = None
     try:
@@ -538,7 +783,22 @@ def finish_service(service_id):
 # --- User Services ---
 def get_manageable_users(current_user_role):
     """
-    Retorna uma lista de usuários que o usuário atual pode gerenciar.
+    Busca a lista de usuários que o usuário atual pode gerenciar.
+
+    A lógica de permissão é aplicada para determinar quais usuários podem ser
+    visualizados e gerenciados pelo usuário logado.
+    - 'admin' e 'gerencial' podem ver todos.
+    - 'qualidade' pode ver 'qualidade' e 'offset'.
+    - Outros perfis não gerenciam usuários.
+
+    Parâmetros:
+        current_user_role (str): A permissão do usuário logado.
+
+    Retorna:
+        list: Uma lista de dicionários, cada um representando um usuário gerenciável.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
     """
     conn = None
     try:
@@ -562,14 +822,20 @@ def get_manageable_users(current_user_role):
 
 def _get_all_from_table(table_name, order_by='id'):
     """
-    Busca todos os registros de uma tabela específica.
+    Função genérica para buscar todos os registros de uma tabela.
 
-    Args:
-        table_name (str): O nome da tabela.
-        order_by (str): O campo para ordenar os resultados.
+    Esta função auxiliar abstrai a lógica de buscar todos os dados de uma
+    tabela de lookup (tabelas de tipos, como 'impressores', 'turnos', etc.).
 
-    Returns:
-        list: Uma lista de dicionários representando os registros.
+    Parâmetros:
+        table_name (str): O nome da tabela a ser consultada.
+        order_by (str): O campo pelo qual os resultados devem ser ordenados.
+
+    Retorna:
+        list: Uma lista de dicionários, onde cada dicionário representa um registro.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
     """
     conn = None
     try:
@@ -586,33 +852,57 @@ def _get_all_from_table(table_name, order_by='id'):
             release_db_connection(conn)
 
 def get_all_impressores():
+    """Busca todos os impressores cadastrados, ordenados por nome."""
     return _get_all_from_table('impressores', 'nome')
 
 def get_all_turnos():
+    """Busca todos os turnos cadastrados, ordenados por descrição."""
     return _get_all_from_table('turnos_tipos', 'descricao')
 
 def get_all_motivos_perda():
+    """Busca todos os motivos de perda cadastrados, ordenados por descrição."""
     return _get_all_from_table('motivos_perda_tipos', 'descricao')
 
 def get_all_motivos_parada():
+    """Busca todos os motivos de parada cadastrados, ordenados por descrição."""
     return _get_all_from_table('motivos_parada_tipos', 'descricao')
 
 def get_all_fsc():
+    """Busca todos os tipos de FSC cadastrados, ordenados por descrição."""
     return _get_all_from_table('fsc_tipos', 'descricao')
 
 def get_all_tipos_papel():
+    """Busca todos os tipos de papel cadastrados, ordenados por descrição."""
     return _get_all_from_table('tipos_papel', 'descricao')
 
 def get_all_gramaturas():
+    """Busca todas as gramaturas de papel cadastradas, ordenadas por valor."""
     return _get_all_from_table('gramaturas_tipos', 'valor')
 
 def get_all_qtde_cores():
+    """Busca todas as quantidades de cores cadastradas, ordenadas por descrição."""
     return _get_all_from_table('qtde_cores_tipos', 'descricao')
 
 def get_all_formatos():
+    """Busca todos os formatos de papel cadastrados, ordenados por descrição."""
     return _get_all_from_table('formatos_tipos', 'descricao')
 
 def get_last_servico_id():
+    """
+    Busca o ID do último serviço criado.
+
+    Retorna o maior ID da tabela `ordem_servicos`, que corresponde ao último
+    serviço inserido.
+
+    Parâmetros:
+        Nenhum.
+
+    Retorna:
+        int: O ID do último serviço, ou 0 se a tabela estiver vazia.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
+    """
     conn = None
     try:
         conn = get_db_connection()
@@ -630,6 +920,17 @@ def get_last_servico_id():
 def create_appointment(data):
     """
     Cria um novo apontamento de produção.
+
+    Insere um novo registro na tabela `apontamento` com os dados fornecidos.
+
+    Parâmetros:
+        data (dict): Dicionário contendo todos os dados do novo apontamento.
+
+    Retorna:
+        int: O ID do novo apontamento criado.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a inserção no banco de dados.
     """
     conn = None
     try:
@@ -656,7 +957,19 @@ def create_appointment(data):
 
 def get_stops_for_appointment(appointment_id):
     """
-    Busca todas as paradas de um apontamento específico.
+    Busca todas as paradas associadas a um apontamento de produção.
+
+    Retorna uma lista de todas as paradas registradas para um apontamento
+    específico, incluindo a descrição do motivo da parada.
+
+    Parâmetros:
+        appointment_id (int): O ID do apontamento.
+
+    Retorna:
+        list: Uma lista de dicionários, cada um representando uma parada.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
     """
     conn = None
     try:
@@ -681,7 +994,19 @@ def get_stops_for_appointment(appointment_id):
 
 def create_stop(data):
     """
-    Cria uma nova parada de produção.
+    Cria um novo registro de parada de produção.
+
+    Insere uma nova parada na tabela `paradas`, associada a um apontamento.
+
+    Parâmetros:
+        data (dict): Dicionário contendo os dados da nova parada (apontamento_id,
+                     horainicio, horafim, motivo_parada_id).
+
+    Retorna:
+        int: O ID da nova parada criada.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a inserção no banco de dados.
     """
     conn = None
     try:
@@ -710,6 +1035,18 @@ def create_stop(data):
 def update_stop(stop_id, data):
     """
     Atualiza uma parada de produção existente.
+
+    Modifica os dados de uma parada (horários, motivo) com base no seu ID.
+
+    Parâmetros:
+        stop_id (int): O ID da parada a ser atualizada.
+        data (dict): Dicionário com os novos dados da parada.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a atualização no banco de dados.
     """
     conn = None
     try:
@@ -736,6 +1073,17 @@ def update_stop(stop_id, data):
 def delete_stop(stop_id):
     """
     Deleta uma parada de produção.
+
+    Remove um registro da tabela `paradas` com base no seu ID.
+
+    Parâmetros:
+        stop_id (int): O ID da parada a ser deletada.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a exclusão no banco de dados.
     """
     conn = None
     try:
@@ -757,7 +1105,19 @@ def delete_stop(stop_id):
 # --- Setup Appointments Services ---
 def get_setup_appointment_by_service_id(service_id):
     """
-    Busca um apontamento de setup pelo ID do serviço.
+    Busca um apontamento de setup pelo ID do serviço associado.
+
+    Retorna os dados do apontamento de setup vinculado a um serviço específico.
+
+    Parâmetros:
+        service_id (int): O ID do serviço.
+
+    Retorna:
+        dict: Um dicionário com os dados do apontamento de setup, ou None se
+              não for encontrado.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
     """
     conn = None
     try:
@@ -780,6 +1140,17 @@ def get_setup_appointment_by_service_id(service_id):
 def create_setup_appointment(data):
     """
     Cria um novo apontamento de setup.
+
+    Insere um novo registro na tabela `apontamento_setup`.
+
+    Parâmetros:
+        data (dict): Dicionário contendo os dados do novo apontamento de setup.
+
+    Retorna:
+        int: O ID do novo apontamento de setup criado.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a inserção no banco de dados.
     """
     conn = None
     try:
@@ -807,6 +1178,18 @@ def create_setup_appointment(data):
 def update_setup_appointment(setup_id, data):
     """
     Atualiza um apontamento de setup existente.
+
+    Modifica os dados de um apontamento de setup com base no seu ID.
+
+    Parâmetros:
+        setup_id (int): O ID do apontamento de setup a ser atualizado.
+        data (dict): Dicionário com os novos dados do apontamento de setup.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a atualização no banco de dados.
     """
     conn = None
     try:
@@ -840,6 +1223,17 @@ def update_setup_appointment(setup_id, data):
 def delete_setup_appointment(setup_id):
     """
     Deleta um apontamento de setup.
+
+    Remove um registro da tabela `apontamento_setup` com base no seu ID.
+
+    Parâmetros:
+        setup_id (int): O ID do apontamento de setup a ser deletado.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a exclusão no banco de dados.
     """
     conn = None
     try:
@@ -861,7 +1255,19 @@ def delete_setup_appointment(setup_id):
 # --- Setup Stops Services ---
 def get_stops_for_setup_appointment(setup_id):
     """
-    Busca todas as paradas de um apontamento de setup específico.
+    Busca todas as paradas associadas a um apontamento de setup.
+
+    Retorna uma lista de todas as paradas registradas para um apontamento
+    de setup específico, incluindo a descrição do motivo da parada.
+
+    Parâmetros:
+        setup_id (int): O ID do apontamento de setup.
+
+    Retorna:
+        list: Uma lista de dicionários, cada um representando uma parada de setup.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
     """
     conn = None
     try:
@@ -886,7 +1292,20 @@ def get_stops_for_setup_appointment(setup_id):
 
 def create_setup_stop(data):
     """
-    Cria uma nova parada de setup.
+    Cria um novo registro de parada de setup.
+
+    Insere uma nova parada na tabela `paradas_setup`, associada a um
+    apontamento de setup.
+
+    Parâmetros:
+        data (dict): Dicionário contendo os dados da nova parada (setup_id,
+                     horainicio, horafim, motivo_id).
+
+    Retorna:
+        int: O ID da nova parada de setup criada.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a inserção no banco de dados.
     """
     conn = None
     try:
@@ -914,6 +1333,18 @@ def create_setup_stop(data):
 def update_setup_stop(stop_id, data):
     """
     Atualiza uma parada de setup existente.
+
+    Modifica os dados de uma parada de setup (horários, motivo) com base no seu ID.
+
+    Parâmetros:
+        stop_id (int): O ID da parada de setup a ser atualizada.
+        data (dict): Dicionário com os novos dados da parada.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a atualização no banco de dados.
     """
     conn = None
     try:
@@ -940,6 +1371,17 @@ def update_setup_stop(stop_id, data):
 def delete_setup_stop(stop_id):
     """
     Deleta uma parada de setup.
+
+    Remove um registro da tabela `paradas_setup` com base no seu ID.
+
+    Parâmetros:
+        stop_id (int): O ID da parada de setup a ser deletada.
+
+    Retorna:
+        Nenhum.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a exclusão no banco de dados.
     """
     conn = None
     try:

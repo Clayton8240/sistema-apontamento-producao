@@ -32,7 +32,25 @@ from .wo_detail_window import WODetailWindow
 from .service_manager_window import ServiceManagerWindow
 
 class PCPWindow(tb.Toplevel):
+    """
+    Janela de Planejamento e Controle da Produção (PCP).
+
+    Esta classe é responsável por fornecer uma interface completa para o gerenciamento
+    de Ordens de Produção (OPs). Permite a criação de novas OPs, a visualização
+    e o reordenamento da fila de produção, a edição e o cancelamento de ordens,
+    e a exportação de relatórios.
+    """
     def __init__(self, master, db_config):
+        """
+        Inicializa a janela PCP.
+
+        Configura a janela, inicializa os dicionários de configuração de campos,
+        os mapas de dados para comboboxes e os widgets da interface.
+
+        Parâmetros:
+            master: O widget pai (janela principal).
+            db_config (dict): Dicionário de configuração do banco de dados.
+        """
         super().__init__(master)
         self.master = master
         self.db_config = db_config
@@ -84,10 +102,27 @@ class PCPWindow(tb.Toplevel):
         self.load_all_combobox_data()
 
     def get_string(self, key, **kwargs):
+        """
+        Obtém uma string de tradução com base na língua atual.
+
+        Parâmetros:
+            key (str): A chave da string no dicionário de idiomas.
+            **kwargs: Argumentos para formatação da string.
+
+        Retorna:
+            str: A string traduzida e formatada.
+        """
         lang_dict = LANGUAGES.get(self.current_language, LANGUAGES['portugues'])
         return lang_dict.get(key, key).format(**kwargs)
 
     def create_widgets(self):
+        """
+        Cria e organiza todos os widgets da interface gráfica da janela PCP.
+
+        Esta função é responsável por construir o layout completo da janela, incluindo
+        o formulário de criação de OPs, a lista de máquinas, a fila de produção (Treeview)
+        e os botões de ação.
+        """
         canvas = Canvas(self, borderwidth=0, highlightthickness=0)
         scrollbar = tb.Scrollbar(self, orient=VERTICAL, command=canvas.yview)
         canvas.configure(yscrollcommand=scrollbar.set)
@@ -246,6 +281,15 @@ class PCPWindow(tb.Toplevel):
         self.start_load_ordens()
 
     def on_drag_start(self, event):
+        """
+        Inicia a operação de arrastar (drag) de um item na fila de produção.
+
+        Identifica o item da Treeview sob o cursor e armazena-o junto com a
+        posição inicial do mouse para a operação de arrastar e soltar.
+
+        Parâmetros:
+            event (tk.Event): O evento de clique do mouse.
+        """
         item = self.tree.identify_row(event.y)
         if item:
             self.tree.selection_set(item)
@@ -253,11 +297,31 @@ class PCPWindow(tb.Toplevel):
             self._drag_data["y"] = event.y
 
     def on_drag_motion(self, event):
+        """
+        Manipula o movimento do mouse durante a operação de arrastar.
+
+        Atualmente, este método não possui implementação visual, mas está
+        reservado para futuras melhorias, como exibir um feedback visual
+        (ex: um ícone ou uma linha de destino) enquanto o item é arrastado.
+
+        Parâmetros:
+            event (tk.Event): O evento de movimento do mouse.
+        """
         # Este método é mantido para futuras melhorias (ex: exibir um indicador visual),
         # mas a lógica de mover o item foi centralizada no on_drag_end para mais controle.
         pass
 
     def on_drag_end(self, event):
+        """
+        Finaliza a operação de arrastar e soltar (drag and drop).
+
+        Quando o botão do mouse é liberado, identifica o item de destino e, se for
+        um local válido e diferente do item original, move o item arrastado para a
+        nova posição na Treeview e chama a função para atualizar a sequência no banco de dados.
+
+        Parâmetros:
+            event (tk.Event): O evento de liberação do botão do mouse.
+        """
         if not self._drag_data["item"]:
             return
 
@@ -274,6 +338,13 @@ class PCPWindow(tb.Toplevel):
 
 
     def update_sequence_from_tree(self):
+        """
+        Atualiza a sequência de produção no banco de dados com base na ordem da Treeview.
+
+        Itera sobre os itens na Treeview, extrai o ID da ordem e sua nova posição (índice),
+        e executa uma transação no banco de dados para atualizar a coluna `sequencia_producao`
+        de cada ordem afetada.
+        """
         new_sequence = {}
         for i, item_id in enumerate(self.tree.get_children()):
             item_data = self.tree.item(item_id)
@@ -297,6 +368,16 @@ class PCPWindow(tb.Toplevel):
             if conn: release_db_connection(conn)
 
     def update_machine_fields(self, event=None):
+        """
+        Atualiza dinamicamente os campos específicos de uma máquina selecionada.
+
+        Quando um equipamento é selecionado no combobox, esta função limpa os campos
+        dinâmicos antigos e busca, via camada de serviço, os novos campos associados
+        ao equipamento selecionado, renderizando-os na interface.
+
+        Parâmetros:
+            event (tk.Event, opcional): O evento que disparou a chamada.
+        """
         for widget in self.machine_dynamic_frame.winfo_children():
             widget.destroy()
         self.machine_dynamic_widgets.clear()
@@ -335,11 +416,31 @@ class PCPWindow(tb.Toplevel):
                     widget['values'] = list(self.cores_map.keys())
 
     def create_widget_from_config(self, parent, config):
+        """
+        Cria um widget com base em uma configuração.
+
+        Função utilitária que cria e retorna um widget (Entry, Combobox, DateEntry)
+        com base na especificação fornecida no dicionário de configuração.
+
+        Parâmetros:
+            parent: O widget pai onde o novo widget será inserido.
+            config (dict): Dicionário de configuração do widget.
+
+        Retorna:
+            tk.Widget: O widget criado.
+        """
         if config.get("widget") == "Combobox": return tb.Combobox(parent, state="readonly")
         elif config.get("widget") == "DateEntry": return DateEntry(parent, dateformat='%d/%m/%Y')
         else: return tb.Entry(parent)
 
     def load_all_combobox_data(self):
+        """
+        Carrega os dados para todos os comboboxes e listboxes da janela.
+
+        Busca dados de tabelas de lookup (equipamentos, cores, papéis, etc.)
+        no banco de dados e popula os respectivos mapas (dicionários) e widgets
+        (Combobox, Listbox) para serem usados na interface.
+        """
         conn = None
         try:
             conn = get_db_connection()
@@ -399,6 +500,13 @@ class PCPWindow(tb.Toplevel):
                 release_db_connection(conn)
 
     def start_load_ordens(self):
+        """
+        Inicia o carregamento assíncrono das ordens de produção.
+
+        Limpa a Treeview, exibe um cursor de espera e dispara uma thread para
+        executar a busca das ordens no banco de dados em segundo plano, evitando
+        que a interface congele.
+        """
         for i in self.tree.get_children():
             self.tree.delete(i)
         self.config(cursor="watch")
@@ -407,6 +515,13 @@ class PCPWindow(tb.Toplevel):
         self.after(100, self._check_load_ordens_queue)
 
     def _background_load_ordens(self):
+        """
+        Executa a consulta ao banco de dados para buscar as ordens em uma thread separada.
+
+        Realiza uma consulta SQL complexa para obter os dados das ordens de produção
+        e o status de seus serviços. O resultado (ou uma exceção) é colocado em uma
+        fila para ser processado pela thread principal da UI.
+        """
         conn = None
         try:
             conn = get_db_connection()
@@ -449,6 +564,13 @@ class PCPWindow(tb.Toplevel):
                 release_db_connection(conn)
 
     def _check_load_ordens_queue(self):
+        """
+        Verifica a fila de dados e atualiza a Treeview com as ordens carregadas.
+
+        Este método é chamado periodicamente pela thread principal para verificar se
+        os dados das ordens já estão disponíveis na fila. Se sim, processa os dados,
+        formata o texto de progresso e insere as ordens na Treeview.
+        """
         try:
             result = self.data_queue.get_nowait()
             self.config(cursor="")
@@ -483,82 +605,99 @@ class PCPWindow(tb.Toplevel):
             self.after(100, self._check_load_ordens_queue)
 
     def remove_selected_machine(self):
+        """
+        Remove a máquina selecionada da lista de máquinas da nova OP.
+        """
         for item in self.machines_tree.selection():
             self.machines_tree.delete(item)
 
     def save_new_ordem(self):
-            wo_number = self.widgets["numero_wo"].get()
-            cliente = self.widgets["cliente"].get()
-            if not wo_number or not cliente or not self.machines_tree.get_children():
-                messagebox.showwarning("Validação", "WO, Cliente e ao menos uma máquina são obrigatórios.", parent=self)
-                return
+        """
+        Salva uma nova Ordem de Produção no banco de dados.
 
-            try:
-                data_previsao_str = self.widgets["data_previsao_entrega"].entry.get()
-                data_previsao = datetime.strptime(data_previsao_str, '%d/%m/%Y').date() if data_previsao_str else None
-                pn_partnumber = self.widgets["pn_partnumber"].get()
-                
-                tipo_papel_id = self.papeis_map.get(self.material_widgets["tipo_papel_id"].get())
-                gramatura_id = self.gramaturas_map.get(self.material_widgets["gramatura_id"].get())
-                formato_id = self.formatos_map.get(self.material_widgets["formato_id"].get())
-                fsc_id = self.fsc_map.get(self.material_widgets["fsc_id"].get())
-                qtde_cores_id = self.cores_map.get(self.material_widgets["qtde_cores_id"].get())
+        Coleta todos os dados do formulário (dados da OP, materiais, acabamentos e
+        sequência de máquinas), valida as informações e chama o serviço
+        `create_production_order` para persistir os dados de forma transacional.
+        """
+        wo_number = self.widgets["numero_wo"].get()
+        cliente = self.widgets["cliente"].get()
+        if not wo_number or not cliente or not self.machines_tree.get_children():
+            messagebox.showwarning("Validação", "WO, Cliente e ao menos uma máquina são obrigatórios.", parent=self)
+            return
 
-                order_data = {
-                    "numero_wo": wo_number,
-                    "pn_partnumber": pn_partnumber,
-                    "cliente": cliente,
-                    "data_previsao_entrega": data_previsao,
-                    "tipo_papel_id": tipo_papel_id,
-                    "gramatura_id": gramatura_id,
-                    "formato_id": formato_id,
-                    "fsc_id": fsc_id,
-                    "qtde_cores_id": qtde_cores_id
-                }
+        try:
+            data_previsao_str = self.widgets["data_previsao_entrega"].entry.get()
+            data_previsao = datetime.strptime(data_previsao_str, '%d/%m/%Y').date() if data_previsao_str else None
+            pn_partnumber = self.widgets["pn_partnumber"].get()
+            
+            tipo_papel_id = self.papeis_map.get(self.material_widgets["tipo_papel_id"].get())
+            gramatura_id = self.gramaturas_map.get(self.material_widgets["gramatura_id"].get())
+            formato_id = self.formatos_map.get(self.material_widgets["formato_id"].get())
+            fsc_id = self.fsc_map.get(self.material_widgets["fsc_id"].get())
+            qtde_cores_id = self.cores_map.get(self.material_widgets["qtde_cores_id"].get())
 
-                acabamento_ids = []
-                selected_indices = self.widgets["acabamento"].curselection()
-                for i in selected_indices:
-                    desc = self.widgets["acabamento"].get(i)
-                    acab_id = self.acabamentos_map.get(desc)
-                    if acab_id:
-                        acabamento_ids.append(acab_id)
+            order_data = {
+                "numero_wo": wo_number,
+                "pn_partnumber": pn_partnumber,
+                "cliente": cliente,
+                "data_previsao_entrega": data_previsao,
+                "tipo_papel_id": tipo_papel_id,
+                "gramatura_id": gramatura_id,
+                "formato_id": formato_id,
+                "fsc_id": fsc_id,
+                "qtde_cores_id": qtde_cores_id
+            }
 
-                machine_list = []
-                for item in self.machines_tree.get_children():
-                    item_data = self.machines_tree.item(item)
-                    (equip_nome, tiragem_str, giros_str, cores_desc, tempo_formatado) = item_data['values']
-                    dynamic_values_str = item_data['tags'][0] if item_data['tags'] else "{}"
-                    dynamic_values = json.loads(dynamic_values_str)
+            acabamento_ids = []
+            selected_indices = self.widgets["acabamento"].curselection()
+            for i in selected_indices:
+                desc = self.widgets["acabamento"].get(i)
+                acab_id = self.acabamentos_map.get(desc)
+                if acab_id:
+                    acabamento_ids.append(acab_id)
 
-                    equipamento_id = self.equipamentos_map.get(equip_nome)
-                    if not equipamento_id:
-                        raise ValueError(f"Equipamento '{equip_nome}' não encontrado no cache.")
+            machine_list = []
+            for item in self.machines_tree.get_children():
+                item_data = self.machines_tree.item(item)
+                (equip_nome, tiragem_str, giros_str, cores_desc, tempo_formatado) = item_data['values']
+                dynamic_values_str = item_data['tags'][0] if item_data['tags'] else "{}"
+                dynamic_values = json.loads(dynamic_values_str)
 
-                    h, m, s = map(int, tempo_formatado.split(':'))
-                    tempo_previsto_ms = (h * 3600 + m * 60 + s) * 1000
+                equipamento_id = self.equipamentos_map.get(equip_nome)
+                if not equipamento_id:
+                    raise ValueError(f"Equipamento '{equip_nome}' não encontrado no cache.")
 
-                    machine_list.append({
-                        "equipamento_id": equipamento_id,
-                        "equipamento_nome": equip_nome,
-                        "tiragem": int(tiragem_str),
-                        "giros_previstos": int(giros_str),
-                        "tempo_previsto_ms": tempo_previsto_ms,
-                        "dynamic_fields": dynamic_values
-                    })
-                
-                create_production_order(order_data, machine_list, acabamento_ids)
+                h, m, s = map(int, tempo_formatado.split(':'))
+                tempo_previsto_ms = (h * 3600 + m * 60 + s) * 1000
 
-                messagebox.showinfo("Sucesso", "Ordem de Produção salva com sucesso!", parent=self)
-                self.clear_fields()
-                self.start_load_ordens()
+                machine_list.append({
+                    "equipamento_id": equipamento_id,
+                    "equipamento_nome": equip_nome,
+                    "tiragem": int(tiragem_str),
+                    "giros_previstos": int(giros_str),
+                    "tempo_previsto_ms": tempo_previsto_ms,
+                    "dynamic_fields": dynamic_values
+                })
+            
+            create_production_order(order_data, machine_list, acabamento_ids)
 
-            except ServiceError as e:
-                messagebox.showerror("Erro de Serviço", f"Não foi possível salvar a ordem:\n{e}", parent=self)
-            except Exception as e:
-                messagebox.showerror("Erro", f"Ocorreu um erro inesperado:\n{e}", parent=self)
+            messagebox.showinfo("Sucesso", "Ordem de Produção salva com sucesso!", parent=self)
+            self.clear_fields()
+            self.start_load_ordens()
+
+        except ServiceError as e:
+            messagebox.showerror("Erro de Serviço", f"Não foi possível salvar a ordem:\n{e}", parent=self)
+        except Exception as e:
+            messagebox.showerror("Erro", f"Ocorreu um erro inesperado:\n{e}", parent=self)
 
     def cancel_ordem(self):
+        """
+        Cancela uma Ordem de Produção selecionada.
+
+        Pede confirmação ao usuário e, se confirmado, remove a ordem de produção
+        e todos os seus registros associados (serviços, máquinas, etc.) do banco
+        de dados de forma transacional.
+        """
         selected_item = self.tree.focus()
         if not selected_item:
             messagebox.showwarning(self.get_string('selection_required_title'), self.get_string('select_order_to_cancel_msg'), parent=self)
@@ -584,6 +723,13 @@ class PCPWindow(tb.Toplevel):
             if conn: release_db_connection(conn)
 
     def swap_orders(self, item1, item2):
+        """
+        Troca a sequência de duas ordens de produção no banco de dados.
+
+        Parâmetros:
+            item1 (str): O ID do primeiro item na Treeview.
+            item2 (str): O ID do segundo item na Treeview.
+        """
         data1 = self.tree.item(item1, 'values')
         seq1, id1 = data1[0], data1[1]
         data2 = self.tree.item(item2, 'values')
@@ -604,6 +750,9 @@ class PCPWindow(tb.Toplevel):
             if conn: release_db_connection(conn)
             
     def open_edit_window(self):
+        """
+        Abre a janela de edição para a ordem de produção selecionada.
+        """
         selected_item = self.tree.focus()
         if not selected_item:
             messagebox.showwarning(self.get_string('selection_required_title'), self.get_string('select_order_to_edit_msg'), parent=self)
@@ -613,6 +762,9 @@ class PCPWindow(tb.Toplevel):
         EditOrdemWindow(self, self.db_config, ordem_id, self.load_all_combobox_data)
 
     def open_report_window(self):
+        """
+        Abre a janela de detalhes (relatório) para a ordem de produção selecionada.
+        """
         selected_item = self.tree.focus()
         if not selected_item:
             messagebox.showwarning("Nenhuma Seleção", "Por favor, selecione uma Ordem de Produção na lista para ver os detalhes.", parent=self)
@@ -622,6 +774,9 @@ class PCPWindow(tb.Toplevel):
         WODetailWindow(self, self.db_config, ordem_id)
         
     def move_order_up(self):
+        """
+        Move a ordem selecionada uma posição para cima na fila de produção.
+        """
         selected_item = self.tree.focus()
         if not selected_item: return
         prev_item = self.tree.prev(selected_item)
@@ -629,6 +784,9 @@ class PCPWindow(tb.Toplevel):
         self.swap_orders(selected_item, prev_item)
 
     def move_order_down(self):
+        """
+        Move a ordem selecionada uma posição para baixo na fila de produção.
+        """
         selected_item = self.tree.focus()
         if not selected_item: return
         next_item = self.tree.next(selected_item)
@@ -636,6 +794,12 @@ class PCPWindow(tb.Toplevel):
         self.swap_orders(selected_item, next_item)
 
     def clear_fields(self):
+        """
+        Limpa todos os campos do formulário de criação de nova OP.
+
+        Reseta todos os widgets de entrada (Entry, Combobox, Listbox) para seus
+        valores padrão, incluindo a lista de máquinas adicionadas.
+        """
         for widget in self.widgets.values():
             if isinstance(widget, tb.Combobox):
                 widget.set('')
@@ -666,6 +830,15 @@ class PCPWindow(tb.Toplevel):
             self.machines_tree.delete(item)
 
     def _calcular_giros_para_maquina(self, event=None):
+        """
+        Calcula automaticamente os giros previstos para uma impressora.
+
+        Esta função é um placeholder e atualmente não está conectada a nenhum evento.
+        A lógica de cálculo de giros foi integrada diretamente em `add_machine_to_list`.
+
+        Parâmetros:
+            event (tk.Event, opcional): O evento que poderia disparar a chamada.
+        """
         try:
             equipamento_selecionado = self.machine_static_widgets["equipamento_id"].get()
             tiragem_str = self.machine_static_widgets["tiragem_em_folhas"].get()
@@ -695,6 +868,15 @@ class PCPWindow(tb.Toplevel):
             print(f"Erro ao calcular giros para máquina: {e}")
 
     def on_tree_select(self, event=None):
+        """
+        Callback executado quando um item na Treeview de ordens é selecionado.
+
+        Habilita ou desabilita os botões de ação (Editar, Cancelar, Mover)
+        com base no status da ordem selecionada.
+
+        Parâmetros:
+            event (tk.Event, opcional): O evento de seleção.
+        """
         selected_item = self.tree.focus()
         if not selected_item:
             self.edit_button.config(state=DISABLED)
@@ -715,6 +897,15 @@ class PCPWindow(tb.Toplevel):
             self.cancel_button.config(state=DISABLED)
 
     def format_seconds_to_hhmmss(self, seconds):
+        """
+        Formata um valor em segundos para o formato HH:MM:SS.
+
+        Parâmetros:
+            seconds (int or float): O número de segundos a ser formatado.
+
+        Retorna:
+            str: A string formatada como "HH:MM:SS".
+        """
         if not isinstance(seconds, (int, float)) or seconds < 0:
             return "00:00:00"
         hours, remainder = divmod(int(seconds), 3600)
@@ -722,6 +913,13 @@ class PCPWindow(tb.Toplevel):
         return f"{hours:02}:{minutes:02}:{seconds:02}"
 
     def add_machine_to_list(self):
+        """
+        Adiciona uma máquina configurada à lista de máquinas da nova OP.
+
+        Valida os campos da máquina, calcula o tempo previsto e os giros, e insere
+        a máquina na Treeview `machines_tree`. Os dados dinâmicos são armazenados
+        como uma string JSON nas tags do item da Treeview.
+        """
         equipamento = self.machine_static_widgets["equipamento_id"].get()
         tiragem_str = self.machine_static_widgets["tiragem_em_folhas"].get()
         
@@ -763,13 +961,19 @@ class PCPWindow(tb.Toplevel):
             messagebox.showerror("Erro de Formato", "O valor da Tiragem deve ser um número.", parent=self)
 
     def export_to_xlsx(self):
+        """
+        Exporta os dados da fila de produção (Treeview) para um arquivo XLSX.
+
+        Coleta os dados visíveis na Treeview, cria um DataFrame do Pandas e solicita
+        ao usuário um local para salvar o arquivo Excel.
+        """
         rows = self.tree.get_children()
         if not rows:
             messagebox.showwarning("Aviso", "Não há dados para exportar.", parent=self)
             return
 
         data = []
-        columns = [self.tree.heading(col)["text"] for col in self.tree["columns"]]
+        columns = [self.tree.heading(col)("text") for col in self.tree["columns"]]
         for row in rows:
             data.append(self.tree.item(row)["values"])
 
@@ -789,6 +993,12 @@ class PCPWindow(tb.Toplevel):
             messagebox.showerror("Erro na Exportação", f"Ocorreu um erro ao exportar para XLSX:\n{e}", parent=self)
             
     def export_to_pdf(self):
+        """
+        Exporta os dados da fila de produção para um arquivo PDF.
+
+        Coleta os dados da Treeview e gera um relatório em PDF, incluindo gráficos.
+        (Atualmente, a geração do gráfico e do PDF está parcialmente implementada).
+        """
         rows = self.tree.get_children()
         if not rows:
             messagebox.showwarning("Aviso", "Não há dados para exportar.", parent=self)
@@ -809,4 +1019,10 @@ class PCPWindow(tb.Toplevel):
             messagebox.showinfo("Sucesso", "Relatório PDF gerado com sucesso!")
 
     def get_db_connection(self):
+        """
+        Obtém uma conexão com o banco de dados.
+
+        Retorna:
+            connection: Uma conexão de banco de dados do pool.
+        """
         return get_db_connection()

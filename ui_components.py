@@ -19,9 +19,25 @@ from config import LOOKUP_TABLE_SCHEMAS
 from database import get_db_connection, release_db_connection # ADICIONADO
    
 class LookupTableManagerWindow(Toplevel):
+    """
+    Uma janela de gerenciamento genérica para tabelas de lookup (tabelas auxiliares).
+
+    Esta classe cria uma interface que permite ao usuário selecionar uma tabela de lookup,
+    visualizar seus dados e realizar operações de CRUD (Criar, Ler, Atualizar, Deletar).
+    A estrutura da tabela (colunas, tipos, etc.) é definida em `config.py`.
+    """
     lookup_table_schemas = LOOKUP_TABLE_SCHEMAS
 
     def __init__(self, master, db_config, refresh_main_comboboxes_callback=None):
+        """
+        Inicializa a janela de gerenciamento de tabelas de lookup.
+
+        Parâmetros:
+            master: O widget pai (janela principal da aplicação).
+            db_config (dict): Configurações de conexão com o banco de dados.
+            refresh_main_comboboxes_callback (function, opcional): Callback para atualizar
+                comboboxes na janela principal após alterações nos dados.
+        """
         logging.debug("LookupTableManagerWindow: __init__")
         super().__init__(master)
         self.master = master
@@ -40,19 +56,46 @@ class LookupTableManagerWindow(Toplevel):
         self.grab_set()
 
     def get_string(self, key, **kwargs):
+        """
+        Obtém uma string de tradução do master (janela principal).
+
+        Parâmetros:
+            key (str): A chave da string de tradução.
+            **kwargs: Argumentos para formatação da string.
+
+        Retorna:
+            str: A string traduzida.
+        """
         logging.debug(f"LookupTableManagerWindow: get_string called with key: {key}")
         return self.master.get_string(key, **kwargs)
 
     def set_localized_title(self):
+        """
+        Define o título da janela com base na tradução atual.
+        """
         logging.debug("LookupTableManagerWindow: set_localized_title")
         self.title(self.get_string('manager_title'))
 
     def get_db_connection(self):
+        """
+        Obtém uma conexão com o banco de dados a partir do pool de conexões.
+
+        Delega a obtenção da conexão para o `master`, que gerencia o pool.
+
+        Retorna:
+            connection: Uma conexão de banco de dados do pool.
+        """
         logging.debug("LookupTableManagerWindow: get_db_connection")
         # Acessa o método do master, que já está configurado para usar o pool
         return self.master.get_db_connection()
 
     def create_manager_ui(self):
+        """
+        Cria a interface gráfica do gerenciador.
+
+        Constrói os widgets da janela, incluindo o seletor de tabelas, botões de ação
+        (Adicionar, Editar, Deletar) e a Treeview para exibição dos dados.
+        """
         logging.debug("LookupTableManagerWindow: create_manager_ui")
         main_frame = tb.Frame(self, padding=15)
         main_frame.pack(fill="both", expand=True)
@@ -85,6 +128,15 @@ class LookupTableManagerWindow(Toplevel):
             self.on_table_selected()
 
     def on_table_selected(self, event=None):
+        """
+        Callback executado quando uma tabela é selecionada no combobox.
+
+        Identifica a tabela do banco de dados correspondente ao nome de exibição
+        selecionado e chama `load_table_data` para carregar seus dados.
+
+        Parâmetros:
+            event (tk.Event, opcional): O evento que disparou a chamada.
+        """
         logging.debug("LookupTableManagerWindow: on_table_selected")
         selected_display_name = self.table_selector_combobox.get()
         self.current_table = next((db_table_name for db_table_name, schema in self.lookup_table_schemas.items() if self.get_string(schema["display_name_key"]) == selected_display_name), None)
@@ -94,6 +146,15 @@ class LookupTableManagerWindow(Toplevel):
             messagebox.showwarning(self.get_string('manager_select_table'), self.get_string('select_table_warning'), parent=self)
 
     def load_table_data(self, table_name):
+        """
+        Carrega e exibe os dados da tabela selecionada na Treeview.
+
+        A função busca o schema da tabela, configura as colunas da Treeview com
+        cabeçalhos traduzidos e executa uma consulta SQL para popular a grade.
+
+        Parâmetros:
+            table_name (str): O nome da tabela no banco de dados a ser carregada.
+        """
         logging.debug(f"LookupTableManagerWindow: load_table_data for table: {table_name}")
         conn = self.get_db_connection()
         if not conn: return
@@ -126,6 +187,16 @@ class LookupTableManagerWindow(Toplevel):
             if conn: release_db_connection(conn)
 
     def open_add_edit_window(self, edit_mode=False):
+        """
+        Abre uma janela modal para adicionar ou editar um registro.
+
+        Cria um formulário dinâmico com base no schema da tabela. Se `edit_mode` for
+        True, preenche o formulário com os dados do item selecionado na Treeview.
+
+        Parâmetros:
+            edit_mode (bool): Se True, abre a janela em modo de edição. Caso contrário,
+                              abre em modo de adição.
+        """
         logging.debug(f"LookupTableManagerWindow: open_add_edit_window, edit_mode: {edit_mode}")
         if not self.current_table:
             messagebox.showwarning(self.get_string('manager_select_table'), self.get_string('select_table_warning'), parent=self)
@@ -171,6 +242,19 @@ class LookupTableManagerWindow(Toplevel):
         tb.Button(action_frame, text=self.get_string('cancel_btn'), bootstyle="secondary", command=add_edit_win.destroy).pack(side="left", padx=5)
     
     def save_entry(self, window, entries, edit_mode, pk_value=None):
+        """
+        Salva um registro novo ou editado no banco de dados.
+
+        Coleta os dados do formulário, valida os tipos e constrói uma consulta SQL
+        de INSERT (para novos registros) ou UPDATE (para registros existentes).
+        A operação é transacional.
+
+        Parâmetros:
+            window (Toplevel): A janela de adição/edição.
+            entries (dict): Dicionário com os widgets de entrada do formulário.
+            edit_mode (bool): Indica se a operação é de edição.
+            pk_value (any, opcional): O valor da chave primária do registro em edição.
+        """
         logging.debug(f"LookupTableManagerWindow: save_entry, edit_mode: {edit_mode}, pk_value: {pk_value}")
         conn = self.get_db_connection()
         if not conn: return
@@ -230,6 +314,13 @@ class LookupTableManagerWindow(Toplevel):
             if conn: release_db_connection(conn)
 
     def delete_selected_entry(self):
+        """
+        Deleta o registro selecionado na Treeview.
+
+        Pede confirmação ao usuário antes de executar a exclusão. A operação
+        é transacional e, se bem-sucedida, atualiza a Treeview e os comboboxes
+        da janela principal.
+        """
         logging.debug("LookupTableManagerWindow: delete_selected_entry")
         item = self.treeview.focus()
         if not item:
