@@ -123,6 +123,10 @@ class ProductionTab(tb.Frame):
         self.selected_ordem_id, self.selected_servico_id, self.setup_id = None, None, None
         self.pending_services_data, self.motivos_perda_data, self.giros_map = {}, {}, {}
         self.initial_fields, self.setup_fields, self.production_fields, self.info_labels = {}, {}, {}, {}
+        self.stop_start_time = None
+        self.stop_timer_job = None
+        self.motivos_parada_options = []
+        self.current_stop_type = None
         
         self.create_widgets()
         self.load_initial_data()
@@ -283,7 +287,13 @@ class ProductionTab(tb.Frame):
         stops_frame.grid_columnconfigure(0, weight=1)
         stops_frame.grid_rowconfigure(0, weight=1)
 
-        self.stops_tree = Treeview(stops_frame, columns=('tipo', 'motivo', 'inicio', 'fim', 'duracao'), show='headings', height=5)
+        # --- Stop History Tree ---
+        self.stops_history_frame = tb.Frame(stops_frame)
+        self.stops_history_frame.grid(row=0, column=0, sticky='nsew')
+        self.stops_history_frame.grid_columnconfigure(0, weight=1)
+        self.stops_history_frame.grid_rowconfigure(0, weight=1)
+
+        self.stops_tree = Treeview(self.stops_history_frame, columns=('tipo', 'motivo', 'inicio', 'fim', 'duracao'), show='headings', height=5)
         self.stops_tree.heading('tipo', text="Tipo"); self.stops_tree.column('tipo', width=80, anchor=CENTER)
         self.stops_tree.heading('motivo', text="Motivo"); self.stops_tree.column('motivo', width=250)
         self.stops_tree.heading('inicio', text="Início"); self.stops_tree.column('inicio', width=100, anchor=CENTER)
@@ -291,12 +301,39 @@ class ProductionTab(tb.Frame):
         self.stops_tree.heading('duracao', text="Duração"); self.stops_tree.column('duracao', width=100, anchor=CENTER)
         self.stops_tree.grid(row=0, column=0, sticky='nsew')
 
-        stops_scrollbar = tb.Scrollbar(stops_frame, orient=VERTICAL, command=self.stops_tree.yview)
+        stops_scrollbar = tb.Scrollbar(self.stops_history_frame, orient=VERTICAL, command=self.stops_tree.yview)
         stops_scrollbar.grid(row=0, column=1, sticky='ns')
         self.stops_tree.configure(yscrollcommand=stops_scrollbar.set)
 
-        details_button = tb.Button(stops_frame, text="Ver Detalhes das Paradas", command=self.view_stop_details)
+        details_button = tb.Button(self.stops_history_frame, text="Ver Detalhes das Paradas", command=self.view_stop_details)
         details_button.grid(row=1, column=0, columnspan=2, pady=PAD_Y)
+
+        # --- Stop Appointment Frame ---
+        self.stop_appointment_frame = tb.Frame(stops_frame)
+
+        tb.Label(self.stop_appointment_frame, text=self.get_string('stop_reason_label') + ": *", font="-weight bold").pack(pady=(0, PAD_Y))
+        self.stop_reason_combobox = tb.Combobox(self.stop_appointment_frame, state="readonly")
+        self.stop_reason_combobox.pack(fill=X, pady=(0, PAD_Y_LARGE))
+        self.stop_reason_combobox.bind("<<ComboboxSelected>>", self.on_reason_selected)
+
+        self.stop_other_reason_label = tb.Label(self.stop_appointment_frame, text=self.get_string('other_motives_label') + ": *", font="-weight bold")
+        self.stop_other_reason_entry = tb.Entry(self.stop_appointment_frame)
+
+        stop_timer_button_frame = tb.Frame(self.stop_appointment_frame)
+        stop_timer_button_frame.pack(fill=X, pady=(PAD_Y_LARGE, 0))
+
+        tb.Label(stop_timer_button_frame, text=self.get_string('stop_time_label')).pack()
+        self.stop_timer_label = tb.Label(stop_timer_button_frame, text="00:00:00", font=TIMER_FONT, bootstyle="danger")
+        self.stop_timer_label.pack()
+        
+        button_container = tb.Frame(self.stop_appointment_frame)
+        button_container.pack(fill=X, pady=(PAD_Y_LARGE, 0))
+
+        self.finish_stop_button = tb.Button(button_container, text=self.get_string('finish_stop_btn'), bootstyle="danger", state=DISABLED, command=self.finish_stop)
+        self.finish_stop_button.pack(side=LEFT, expand=True, padx=(0, 5))
+
+        self.cancel_stop_button = tb.Button(button_container, text="Cancelar", bootstyle="secondary", command=self.cancel_stop)
+        self.cancel_stop_button.pack(side=RIGHT, expand=True, padx=(5, 0))
         
         footer_frame = tb.Frame(self.scrollable_frame)
         footer_frame.grid(row=2, column=0, columnspan=2, sticky="ew")
@@ -336,6 +373,14 @@ class ProductionTab(tb.Frame):
                 cur.execute('SELECT id, descricao FROM motivos_perda_tipos ORDER BY descricao')
                 self.motivos_perda_data = {desc: mid for mid, desc in cur.fetchall()}
                 self.motivo_perda_combobox['values'] = list(self.motivos_perda_data.keys())
+                
+                # Load stop reasons
+                schema = LOOKUP_TABLE_SCHEMAS["motivos_parada_tipos"]
+                query = f'SELECT "{schema["columns"]["descricao"]["db_column"]}", "{schema["pk_column"]}" FROM {schema["table"]} ORDER BY "{schema["columns"]["descricao"]["db_column"]}"'
+                cur.execute(query)
+                self.motivos_parada_options = cur.fetchall()
+                self.stop_reason_combobox['values'] = [opt[0] for opt in self.motivos_parada_options]
+
         except Exception as e:
             messagebox.showwarning(self.get_string('error_title_generic'), f"{self.get_string('load_initial_data_failed')}{e}", parent=self)
         finally:
@@ -683,8 +728,84 @@ class ProductionTab(tb.Frame):
             self.stops_tree.insert('', END, values=(stop.get('type', ''), motivo_display, start_str, end_str, duration_str))
 
     def open_stop_window(self, stop_type):
-        callback = self.add_setup_stop if stop_type == 'setup' else self.add_prod_stop
-        RealTimeStopWindow(self, self.db_config, callback)
+        self.current_stop_type = stop_type
+        self.stop_start_time = datetime.now()
+        
+        self.stops_history_frame.grid_forget()
+        self.stop_appointment_frame.grid(row=0, column=0, sticky='nsew')
+        
+        self.update_stop_timer()
+
+    def cancel_stop(self):
+        if self.stop_timer_job:
+            self.after_cancel(self.stop_timer_job)
+            self.stop_timer_job = None
+
+        self.stop_appointment_frame.grid_forget()
+        self.stops_history_frame.grid(row=0, column=0, sticky='nsew')
+        self.stop_reason_combobox.set('')
+        self.stop_other_reason_entry.delete(0, END)
+        self.stop_other_reason_label.pack_forget()
+        self.stop_other_reason_entry.pack_forget()
+        self.finish_stop_button.config(state=DISABLED)
+
+    def finish_stop(self):
+        if self.stop_timer_job:
+            self.after_cancel(self.stop_timer_job)
+            self.stop_timer_job = None
+
+        selected_motivo_text = self.stop_reason_combobox.get()
+        extra_detail = None
+        if selected_motivo_text and selected_motivo_text.lower() == 'outros':
+            extra_detail = self.stop_other_reason_entry.get().strip()
+            if not extra_detail:
+                self.stop_other_reason_entry.configure(bootstyle='danger')
+                messagebox.showwarning("Campo Obrigatório", "Por favor, especifique o motivo da parada.", parent=self)
+                self.update_stop_timer()
+                return
+        elif not selected_motivo_text:
+            self.stop_reason_combobox.configure(bootstyle='danger')
+            messagebox.showwarning("Campo Obrigatório", "Por favor, selecione um motivo para a parada.", parent=self)
+            self.update_stop_timer()
+            return
+
+        end_time = datetime.now()
+        motivo_id = next((opt[1] for opt in self.motivos_parada_options if opt[0] == selected_motivo_text), None)
+
+        stop_data = {
+            "motivo_text": selected_motivo_text, "motivo_id": motivo_id,
+            "hora_inicio_parada": self.stop_start_time.time(), "hora_fim_parada": end_time.time(),
+            "motivo_extra_detail": extra_detail
+        }
+
+        if self.current_stop_type == 'setup':
+            self.add_setup_stop(stop_data)
+        else:
+            self.add_prod_stop(stop_data)
+
+        self.cancel_stop()
+
+    def on_reason_selected(self, event=None):
+        selected_reason = self.stop_reason_combobox.get()
+        if selected_reason and selected_reason.lower() == 'outros':
+            self.stop_other_reason_label.pack(fill=X, pady=(PAD_Y_LARGE, 0))
+            self.stop_other_reason_entry.pack(fill=X)
+            self.stop_other_reason_entry.focus_set()
+        else:
+            self.stop_other_reason_entry.delete(0, END)
+            self.stop_other_reason_label.pack_forget()
+            self.stop_other_reason_entry.pack_forget()
+        self.finish_stop_button.config(state=NORMAL if selected_reason else DISABLED)
+
+    def update_stop_timer(self):
+        if not self.stop_start_time:
+            return
+        elapsed = datetime.now() - self.stop_start_time
+        total_seconds = int(elapsed.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        self.stop_timer_label.config(text=f"{hours:02}:{minutes:02}:{seconds:02}")
+        self.stop_timer_job = self.after(1000, self.update_stop_timer)
 
     def add_setup_stop(self, stop_data):
         stop_data['type'] = 'Setup'
@@ -737,118 +858,6 @@ class ProductionTab(tb.Frame):
     def _on_frame_configure(self, event):
         """Update the scrollregion of the canvas when the scrollable_frame changes size."""
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-
-class RealTimeStopWindow(Toplevel):
-    def __init__(self, master, db_config, stop_callback):
-        super().__init__(master)
-        self.master = master
-        self.db_config = db_config
-        self.stop_callback = stop_callback
-
-        self.title(self.master.get_string('stop_tracking_window_title'))
-        self.geometry("500x300")
-        self.transient(master)
-        self.grab_set()
-
-        self.start_time = datetime.now()
-        self.motivos_parada_options = []
-        self.timer_job = None
-
-        self.create_widgets()
-        self.load_motivos_parada()
-        self.update_timer()
-    
-    def get_string(self, key, **kwargs):
-        return self.master.get_string(key, **kwargs)
-
-    def create_widgets(self):
-        main_frame = tb.Frame(self, padding=FRAME_PADDING)
-        main_frame.pack(fill=BOTH, expand=YES)
-        
-        tb.Label(main_frame, text=self.get_string('stop_reason_label') + ": *", font="-weight bold").pack(pady=(0, PAD_Y))
-        self.motivo_combobox = tb.Combobox(main_frame, state="readonly")
-        self.motivo_combobox.pack(fill=X, pady=(0, PAD_Y_LARGE))
-        self.motivo_combobox.bind("<<ComboboxSelected>>", self.on_reason_selected)
-
-        self.other_reason_label = tb.Label(main_frame, text=self.get_string('other_motives_label') + ": *", font="-weight bold")
-        self.other_reason_entry = tb.Entry(main_frame)
-        
-        timer_button_frame = tb.Frame(main_frame)
-        timer_button_frame.pack(fill=X, pady=(PAD_Y_LARGE, 0))
-        
-        tb.Label(timer_button_frame, text=self.get_string('stop_time_label')).pack()
-        self.timer_label = tb.Label(timer_button_frame, text="00:00:00", font=TIMER_FONT, bootstyle="danger")
-        self.timer_label.pack()
-
-        self.finish_button = tb.Button(timer_button_frame, text=self.get_string('finish_stop_btn'), bootstyle="danger", state=DISABLED, command=self.finish_stop)
-        self.finish_button.pack(pady=(PAD_Y_LARGE, 0), ipadx=10, ipady=5)
-
-    def load_motivos_parada(self):
-        self.master.set_cursor_watch()
-        try:
-            conn = get_db_connection()
-            if not conn: return
-            with conn.cursor() as cur:
-                schema = LOOKUP_TABLE_SCHEMAS["motivos_parada_tipos"]
-                query = f'SELECT "{schema["columns"]["descricao"]["db_column"]}", "{schema["pk_column"]}" FROM {schema["table"]} ORDER BY "{schema["columns"]["descricao"]["db_column"]}"'
-                cur.execute(query)
-                self.motivos_parada_options = cur.fetchall()
-                self.motivo_combobox['values'] = [opt[0] for opt in self.motivos_parada_options]
-        except psycopg2.Error as e:
-            messagebox.showwarning("Erro", f"Falha ao carregar motivos de parada: {e}", parent=self)
-        finally:
-            if 'conn' in locals() and conn: release_db_connection(conn)
-            self.master.set_cursor_default()
-
-    def on_reason_selected(self, event=None):
-        selected_reason = self.motivo_combobox.get()
-        if selected_reason and selected_reason.lower() == 'outros':
-            self.other_reason_label.pack(fill=X, pady=(PAD_Y_LARGE, 0))
-            self.other_reason_entry.pack(fill=X)
-            self.other_reason_entry.focus_set()
-        else:
-            self.other_reason_entry.delete(0, END)
-            self.other_reason_label.pack_forget()
-            self.other_reason_entry.pack_forget()
-        self.finish_button.config(state=NORMAL if selected_reason else DISABLED)
-
-    def update_timer(self):
-        elapsed = datetime.now() - self.start_time
-        total_seconds = int(elapsed.total_seconds())
-        hours, remainder = divmod(total_seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        self.timer_label.config(text=f"{hours:02}:{minutes:02}:{seconds:02}")
-        self.timer_job = self.after(1000, self.update_timer)
-
-    def finish_stop(self):
-        if self.timer_job: self.after_cancel(self.timer_job)
-        
-        selected_motivo_text = self.motivo_combobox.get()
-        extra_detail = None
-        if selected_motivo_text and selected_motivo_text.lower() == 'outros':
-            extra_detail = self.other_reason_entry.get().strip()
-            if not extra_detail:
-                self.other_reason_entry.configure(bootstyle='danger')
-                messagebox.showwarning("Campo Obrigatório", "Por favor, especifique o motivo da parada.", parent=self)
-                self.update_timer()
-                return
-        elif not selected_motivo_text:
-             self.motivo_combobox.configure(bootstyle='danger')
-             messagebox.showwarning("Campo Obrigatório", "Por favor, selecione um motivo para a parada.", parent=self)
-             self.update_timer()
-             return
-
-        end_time = datetime.now()
-        motivo_id = next((opt[1] for opt in self.motivos_parada_options if opt[0] == selected_motivo_text), None)
-        
-        stop_data = {
-            "motivo_text": selected_motivo_text, "motivo_id": motivo_id,
-            "hora_inicio_parada": self.start_time.time(), "hora_fim_parada": end_time.time(),
-            "motivo_extra_detail": extra_detail
-        }
-        
-        self.stop_callback(stop_data)
-        self.destroy()
 
 class App(Toplevel):
     """The main application window, now managing multiple ProductionTab instances."""
