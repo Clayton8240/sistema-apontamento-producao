@@ -917,6 +917,92 @@ def get_last_servico_id():
         if conn:
             release_db_connection(conn)
 
+def get_closed_production_orders():
+    """
+    Busca todas as Ordens de Produção com status 'Encerrada' e seus detalhes completos.
+
+    Retorna uma lista de dicionários, onde cada dicionário representa uma Ordem de Produção
+    encerrada, incluindo seus acabamentos e máquinas associadas com campos dinâmicos.
+
+    Retorna:
+        list: Uma lista de dicionários, cada um representando uma OP encerrada.
+
+    Levanta:
+        ServiceError: Se ocorrer um erro durante a consulta ao banco de dados.
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cur:
+            # 1. Buscar Ordens de Produção encerradas (onde todos os serviços estão concluídos)
+            query_ops = """
+                SELECT
+                    op.id, op.numero_wo, op.pn_partnumber, op.cliente, op.data_previsao_entrega,
+                    op.tipo_papel_id, op.gramatura_id, op.formato_id, op.fsc_id, op.qtde_cores_id
+                FROM ordem_producao op
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM ordem_servicos os
+                    WHERE os.ordem_id = op.id
+                    AND LOWER(os.status) != LOWER('Concluído')
+                )
+                ORDER BY op.data_previsao_entrega DESC, op.numero_wo DESC;
+            """
+            cur.execute(query_ops)
+            op_columns = [col[0] for col in cur.description]
+            closed_orders = [dict(zip(op_columns, row)) for row in cur.fetchall()]
+
+            for order in closed_orders:
+                ordem_id = order['id']
+
+                # 2. Buscar Acabamentos associados
+                query_acabamentos = """
+                    SELECT ac.id, ac.descricao
+                    FROM acabamentos_tipos ac
+                    JOIN ordem_producao_acabamentos opa ON ac.id = opa.acabamento_id
+                    WHERE opa.ordem_id = %s;
+                """
+                cur.execute(query_acabamentos, (ordem_id,))
+                acab_columns = [col[0] for col in cur.description]
+                order['acabamentos'] = [dict(zip(acab_columns, row)) for row in cur.fetchall()]
+
+                # 3. Buscar Máquinas associadas e seus campos dinâmicos
+                query_maquinas = """
+                    SELECT
+                        opm.id AS maquina_op_id, opm.equipamento_id, et.descricao AS equipamento_nome,
+                        opm.tiragem_em_folhas, opm.giros_previstos, opm.tempo_producao_previsto_ms
+                    FROM ordem_producao_maquinas opm
+                    JOIN equipamentos_tipos et ON opm.equipamento_id = et.id
+                    WHERE opm.ordem_id = %s
+                    ORDER BY opm.sequencia_producao;
+                """
+                cur.execute(query_maquinas, (ordem_id,))
+                maq_columns = [col[0] for col in cur.description]
+                machines = [dict(zip(maq_columns, row)) for row in cur.fetchall()]
+
+                for machine in machines:
+                    maquina_op_id = machine['maquina_op_id']
+                    query_dynamic_fields = """
+                        SELECT ec.nome_campo, opmv.valor
+                        FROM ordem_producao_maquinas_valores opmv
+                        JOIN equipamento_campos ec ON opmv.equipamento_campo_id = ec.id
+                        WHERE opmv.ordem_producao_maquinas_id = %s;
+                    """
+                    cur.execute(query_dynamic_fields, (maquina_op_id,))
+                    dynamic_fields = {row[0]: row[1] for row in cur.fetchall()}
+                    machine['dynamic_fields'] = dynamic_fields
+                order['machines'] = machines
+
+            return closed_orders
+
+    except (Exception, psycopg2.Error) as e:
+        logging.error(f"Erro ao buscar ordens de produção encerradas: {e}")
+        raise ServiceError(f"Erro ao buscar ordens de produção encerradas: {e}")
+    finally:
+        if conn:
+            release_db_connection(conn)
+
+
 def create_appointment(data):
     """
     Cria um novo apontamento de produção.

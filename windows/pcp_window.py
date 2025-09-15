@@ -30,6 +30,7 @@ from services import get_equipment_fields, get_field_id_by_name, ServiceError, c
 from .edit_order_window import EditOrdemWindow
 from .wo_detail_window import WODetailWindow
 from .service_manager_window import ServiceManagerWindow
+from .select_closed_wo_window import SelectClosedWOWindow
 
 class PCPWindow(tb.Toplevel):
     """
@@ -222,6 +223,7 @@ class PCPWindow(tb.Toplevel):
         final_buttons_frame.pack(fill=X, pady=10)
         tb.Button(final_buttons_frame, text=self.get_string('save_btn'), command=self.save_new_ordem, bootstyle=SUCCESS).pack(side='left', padx=5)
         tb.Button(final_buttons_frame, text=self.get_string('clear_filters_btn'), command=self.clear_fields, bootstyle=SECONDARY).pack(side='left', padx=5)
+        tb.Button(final_buttons_frame, text=self.get_string('copy_wo_btn'), command=self.open_select_closed_wo_window, bootstyle=INFO).pack(side='left', padx=5)
 
         action_frame = tb.Frame(main_frame)
         action_frame.pack(fill=X, pady=15)
@@ -1026,3 +1028,61 @@ class PCPWindow(tb.Toplevel):
             connection: Uma conexão de banco de dados do pool.
         """
         return get_db_connection()
+
+    def open_select_closed_wo_window(self):
+        SelectClosedWOWindow(self, self.db_config, self.populate_fields_from_wo)
+
+    def populate_fields_from_wo(self, wo_data):
+        # Clear current fields first
+        self.clear_fields()
+
+        # Populate main fields
+        self.widgets["numero_wo"].insert(0, wo_data.get('numero_wo', ''))
+        self.widgets["pn_partnumber"].insert(0, wo_data.get('pn_partnumber', ''))
+        self.widgets["cliente"].insert(0, wo_data.get('cliente', ''))
+        if wo_data.get('data_previsao_entrega'):
+            self.widgets["data_previsao_entrega"].entry.insert(0, wo_data['data_previsao_entrega'].strftime('%d/%m/%Y'))
+
+        # Populate material fields
+        self.material_widgets["tipo_papel_id"].set(self.get_lookup_value_by_id(self.papeis_map, wo_data.get('tipo_papel_id')))
+        self.material_widgets["gramatura_id"].set(self.get_lookup_value_by_id(self.gramaturas_map, wo_data.get('gramatura_id')))
+        self.material_widgets["formato_id"].set(self.get_lookup_value_by_id(self.formatos_map, wo_data.get('formato_id')))
+        self.material_widgets["fsc_id"].set(self.get_lookup_value_by_id(self.fsc_map, wo_data.get('fsc_id')))
+        self.material_widgets["qtde_cores_id"].set(self.get_lookup_value_by_id(self.cores_map, wo_data.get('qtde_cores_id')))
+
+        # Populate acabamento listbox
+        if wo_data.get('acabamentos'):
+            acab_widget = self.widgets["acabamento"]
+            for acabamento in wo_data['acabamentos']:
+                desc = acabamento['descricao']
+                # Find index by description and select
+                for i, item in enumerate(acab_widget.get(0, tk.END)):
+                    if item == desc:
+                        acab_widget.selection_set(i)
+                        break
+
+        # Populate machines treeview
+        for machine in wo_data.get('machines', []):
+            equip_nome = machine.get('equipamento_nome', '')
+            tiragem = machine.get('tiragem_em_folhas', 0)
+            giros_previstos = machine.get('giros_previstos', 0)
+            tempo_previsto_ms = machine.get('tempo_producao_previsto_ms', 0)
+            tempo_formatado = self.format_seconds_to_hhmmss(tempo_previsto_ms / 1000.0)
+            dynamic_fields = machine.get('dynamic_fields', {})
+            
+            # Assuming cores_desc can be derived from dynamic_fields or is part of machine data
+            # For now, let's assume it's not directly available and might need to be re-selected by user or inferred
+            # If 'qtde_cores_id' is a dynamic field, it will be handled by dynamic_fields
+            cores_desc = dynamic_fields.get('qtde_cores_id', '') # Example: if qtde_cores_id is a dynamic field
+
+            self.machines_tree.insert("", "end", values=(equip_nome, tiragem, giros_previstos, cores_desc, tempo_formatado), tags=[json.dumps(dynamic_fields)])
+
+    def get_lookup_value_by_id(self, lookup_map, id_value):
+        """
+        Helper to get the display value from a lookup map given an ID.
+        """
+        if id_value is None: return ''
+        for key, value_id in lookup_map.items():
+            if value_id == id_value:
+                return key
+        return ''
