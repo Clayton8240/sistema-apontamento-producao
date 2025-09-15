@@ -574,7 +574,7 @@ def remove_equipment_type_field(equipamento_type_id, field_id):
             release_db_connection(conn)
 
 # --- Appointments Services ---
-def get_appointments_for_editing():
+def get_all_appointments_for_editing():
     """
     Busca todos os apontamentos com dados detalhados para edição.
 
@@ -604,6 +604,7 @@ def get_appointments_for_editing():
                     op.pn_partnumber,
                     op.cliente,
                     os.descricao AS servico,
+                    os.status,
                     i.nome AS operador,
                     a.data,
                     a.horainicio,

@@ -4,7 +4,7 @@ import ttkbootstrap as tb
 from ttkbootstrap.constants import *
 from tkinter import messagebox, Toplevel, END
 from services import (
-    get_appointments_for_editing, update_appointment, delete_appointment, 
+    get_all_appointments_for_editing, update_appointment, delete_appointment, 
     finish_service, ServiceError, get_all_impressores, get_all_turnos, 
     get_all_motivos_perda, create_appointment, get_stops_for_appointment,
     create_stop, update_stop, delete_stop, get_all_motivos_parada,
@@ -311,8 +311,8 @@ class EditAppointmentsWindow(Toplevel):
         list_frame = tb.LabelFrame(main_frame, text="Apontamentos de Produção", bootstyle=PRIMARY, padding=10)
         list_frame.pack(fill=BOTH, expand=YES, pady=(0, 10))
 
-        cols = ['id', 'numero_wo', 'pn_partnumber', 'servico', 'operador', 'data', 'horainicio', 'horafim', 'quantidadeproduzida']
-        headers = ['ID', 'Ordem', 'Partnumber', 'Serviço', 'Operador', 'Data', 'Início', 'Fim', 'Produzido']
+        cols = ['id', 'numero_wo', 'pn_partnumber', 'servico', 'status', 'operador', 'data', 'horainicio', 'horafim', 'quantidadeproduzida']
+        headers = ['ID', 'Ordem', 'Partnumber', 'Serviço', 'Status', 'Operador', 'Data', 'Início', 'Fim', 'Produzido']
         self.tree = tb.Treeview(list_frame, columns=cols, show="headings")
         for col, header in zip(cols, headers):
             self.tree.heading(col, text=header)
@@ -413,10 +413,10 @@ class EditAppointmentsWindow(Toplevel):
         for i in self.tree.get_children():
             self.tree.delete(i)
         try:
-            self.appointments_data = get_appointments_for_editing()
+            self.appointments_data = get_all_appointments_for_editing()
             for app in self.appointments_data:
                 values = (
-                    app['id'], app['numero_wo'], app['pn_partnumber'], app['servico'], 
+                    app['id'], app['numero_wo'], app['pn_partnumber'], app['servico'], app['status'],
                     self.impressores.get(app['impressor_id'], 'N/A'),
                     app['data'].strftime('%d/%m/%Y') if app['data'] else '',
                     app['horainicio'].strftime('%H:%M:%S') if app['horainicio'] else '',
